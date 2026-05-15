@@ -152,7 +152,7 @@ function LeftPanel({ show, onClose, layers, selectedId, onSelect, onToggleVisibl
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {[...layers].reverse().map(layer => (
+        {layers.map(layer => (
           <LayerRow
             key={layer.id}
             layer={layer}
