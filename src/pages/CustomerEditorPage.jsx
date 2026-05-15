@@ -24,6 +24,9 @@ function useKonvaImage(dataUrl) {
 }
 
 // ── FieldInput component ───────────────────────────────────────────────────────
+const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Verdana', 'Impact']
+const EXPORT_COST = 30
+
 function FieldInput({ field, value, onChange, textStyle, onTextStyleChange }) {
   const fileRef = useRef(null)
   const [showStyle, setShowStyle] = useState(false)
@@ -49,7 +52,6 @@ function FieldInput({ field, value, onChange, textStyle, onTextStyleChange }) {
   }
 
   if (field.type === 'text') {
-    const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Verdana', 'Impact']
     const ts = textStyle || {}
     return (
       <div className="space-y-1.5">
@@ -286,9 +288,10 @@ export default function CustomerEditorPage() {
   const { isOwned, toast } = useAppStore()
   const { user, deductBalance } = useAuthStore()
   const isAdmin = useAuthStore(s => s.isAdmin())
-  const [hasPaid, setHasPaid] = useState(false)
+  const [hasPaid, setHasPaid] = useState(() => {
+    try { return sessionStorage.getItem(`nova_paid_${productId}`) === '1' } catch { return false }
+  })
   const [showPayModal, setShowPayModal] = useState(false)
-  const EXPORT_COST = 30
 
   const containerRef = useRef(null)
   const stageRef = useRef(null)
@@ -347,9 +350,9 @@ export default function CustomerEditorPage() {
     setOverrides(prev => ({ ...prev, [role]: { x, y } }))
   }, [])
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback((force = false) => {
     // Payment gate — admin always free, regular users must pay
-    if (!isAdmin && !hasPaid) {
+    if (!force && !isAdmin && !hasPaid) {
       setShowPayModal(true)
       return
     }
@@ -492,7 +495,7 @@ export default function CustomerEditorPage() {
             )}
           </div>
 
-          {/* Layer naming guide */}
+          {/* Layer naming guide — PSD authoring reference (intentionally static, not tied to product.editableFields) */}
           <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <button
               onClick={() => setShowLayerGuide(v => !v)}
@@ -640,32 +643,13 @@ export default function CustomerEditorPage() {
                   if (!user || user.balance < EXPORT_COST) return
                   const ok = deductBalance(EXPORT_COST)
                   if (!ok) { toast('Số dư không đủ!', 'error', 'Lỗi'); return }
+                  try { sessionStorage.setItem(`nova_paid_${productId}`, '1') } catch {}
                   setHasPaid(true)
                   setShowPayModal(false)
                   toast('Thanh toán thành công! Đang tải...', 'success', 'OK')
-                  setTimeout(() => {
-                    const fn = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}`
-                    const dl = (dataUrl) => {
-                      const a = document.createElement('a')
-                      a.href = dataUrl
-                      a.download = `${fn}.png`
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                    }
-                    if (stageRef.current) {
-                      try {
-                        dl(stageRef.current.toDataURL({ mimeType: 'image/png', pixelRatio: 2 }))
-                      } catch {
-                        const src = (product?.images?.length > 0 ? product.images[0] : null) || product?.previewDataUrl
-                        if (src) dl(src)
-                      }
-                    } else {
-                      const src = (product?.images?.length > 0 ? product.images[0] : null) || product?.previewDataUrl
-                      if (src) dl(src)
-                    }
-                    toast('Đã tải về!', 'success', 'Download')
-                  }, 300)
+                  // Capture canvas synchronously while stageRef is still mounted,
+                  // then trigger the shared download path with force=true.
+                  handleDownload(true)
                 }}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', color: '#fff' }}>
