@@ -290,6 +290,7 @@ export default function CustomerEditorPage() {
   const [selectedRole, setSelectedRole] = useState(null)
   const [overrides, setOverrides] = useState({})
   const [textStyles, setTextStyles] = useState({}) // { [role]: { fontFamily, fontSize, color, bold, italic } }
+  const [showLayerGuide, setShowLayerGuide] = useState(false)
   const handleTextStyleChange = useCallback((role, changes) => {
     setTextStyles(prev => ({ ...prev, [role]: { ...(prev[role] || {}), ...changes } }))
   }, [])
@@ -476,6 +477,40 @@ export default function CustomerEditorPage() {
                   />
                 </motion.div>
               ))
+            )}
+          </div>
+
+          {/* Layer naming guide */}
+          <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={() => setShowLayerGuide(v => !v)}
+              className="w-full flex items-center justify-between text-[10px] text-white/30 hover:text-white/50 transition-colors py-1">
+              <span className="flex items-center gap-1.5">
+                <span>📋</span> Quy chuẩn tên layer PSD
+              </span>
+              <span>{showLayerGuide ? '▲' : '▼'}</span>
+            </button>
+            {showLayerGuide && (
+              <div className="mt-2 space-y-1 text-[10px]">
+                {[
+                  { name: 'text_1', label: 'Nội dung chính', type: 'text' },
+                  { name: 'text_2', label: 'Nội dung phụ', type: 'text' },
+                  { name: 'text_3', label: 'Nội dung 3', type: 'text' },
+                  { name: 'title_logo', label: 'Tên / Tiêu đề Logo', type: 'text' },
+                  { name: 'text_logo', label: 'Text logo phụ', type: 'text' },
+                  { name: 'nvat_png', label: 'Nhân vật PNG', type: 'image' },
+                  { name: 'avt_png', label: 'Avatar (tròn)', type: 'image' },
+                  { name: 'logo', label: 'Logo chính', type: 'image' },
+                ].map(r => (
+                  <div key={r.name} className="flex items-center gap-2 py-0.5">
+                    <code className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                      style={{ background: r.type === 'text' ? 'rgba(110,75,255,0.2)' : 'rgba(77,208,255,0.15)', color: r.type === 'text' ? 'rgba(167,139,250,1)' : 'rgba(77,208,255,1)' }}>
+                      {r.name}
+                    </code>
+                    <span className="text-white/40">{r.label}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </motion.div>
