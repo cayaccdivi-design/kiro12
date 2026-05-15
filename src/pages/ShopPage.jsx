@@ -94,9 +94,9 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
   }
 
   const handleSave = () => {
-    const totalSize = (form.images || []).reduce((acc, img) => acc + img.length, 0)
-    if (totalSize > 1.5 * 1024 * 1024) {
-      alert('Tổng dung lượng ảnh quá lớn (>1.5MB). Vui lòng giảm số lượng hoặc kích thước ảnh.')
+    const totalSize = (form.images || []).reduce((acc, img) => acc + img.length * 0.75, 0)
+    if (totalSize > 2 * 1024 * 1024) {
+      alert('Tổng dung lượng ảnh quá lớn (>2MB). Vui lòng giảm số lượng hoặc kích thước ảnh.')
       return
     }
     onSave(form)
@@ -173,12 +173,14 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
                         Chính
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center">
-                      ✕
-                    </button>
+                    {i !== 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center">
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
