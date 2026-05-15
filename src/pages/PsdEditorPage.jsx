@@ -981,9 +981,9 @@ export default function PsdEditorPage() {
     const ratio = detectRatio(psdMeta.width, psdMeta.height)
     // Extract editable fields from named layers
     const editableFields = layers
-      .filter(l => detectLayerRole(l.name))
       .map(l => {
         const role = detectLayerRole(l.name)
+        if (!role) return null
         return {
           role: role.role,
           label: role.label,
@@ -1001,6 +1001,12 @@ export default function PsdEditorPage() {
           italic: l.italic || false,
         }
       })
+      .filter(Boolean)
+    if (editableFields.length === 0) {
+      // No named layers found - product will be published without editable fields
+      // Admin should name layers: text_1, text_2, text_3, title_logo, text_logo, nvat_png, avt_png, logo
+      console.warn('[Nova] No named layers found - product published without editable fields. Layer naming convention: text_1, text_2, text_3, title_logo, text_logo, nvat_png, avt_png, logo')
+    }
     addProduct({
       ...publishForm,
       previewDataUrl,

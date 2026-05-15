@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer } from 'react-konva'
+import { Stage, Layer, Image as KonvaImage, Text as KonvaText } from 'react-konva'
 import { Download, ArrowLeft, Type, Image as ImageIcon, Upload, User, Star, AlertCircle } from 'lucide-react'
 import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
@@ -225,6 +225,22 @@ export default function CustomerEditorPage() {
     }
     return init
   })
+
+  // Backfill customValues when product loads (in case store hydrates after mount)
+  useEffect(() => {
+    if (!product?.editableFields) return
+    setCustomValues(prev => {
+      const init = { ...prev }
+      let changed = false
+      for (const f of product.editableFields) {
+        if (!(f.role in init)) {
+          init[f.role] = f.defaultValue || ''
+          changed = true
+        }
+      }
+      return changed ? init : prev
+    })
+  }, [product])
 
   const bgImg = useKonvaImage(product?.previewDataUrl || null)
 

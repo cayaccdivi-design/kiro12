@@ -27,12 +27,12 @@ export default function App() {
         <Route path="/gift" element={<GiftPage />} />
         <Route path="/remove-bg" element={<RemoveBgPage />} />
         <Route path="/psd-editor" element={<ProtectedRoute><PsdEditorPage /></ProtectedRoute>} />
-        <Route path="/editor/:productId" element={<ProtectedRoute><CustomerEditorPage /></ProtectedRoute>} />
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/topup" element={
           <ProtectedRoute><TopupPage /></ProtectedRoute>
         } />
       </Route>
+      <Route path="/editor/:productId" element={<ProtectedRoute><CustomerEditorPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
