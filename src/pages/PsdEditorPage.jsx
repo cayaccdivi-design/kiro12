@@ -494,7 +494,7 @@ const CATEGORIES = [
   { value: 'banner-discord', label: 'Banner Discord' },
 ]
 
-function PublishModal({ open, onClose, form, setForm, onSubmit }) {
+function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCount }) {
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
     border: '1px solid rgba(255,255,255,0.09)',
@@ -619,6 +619,13 @@ function PublishModal({ open, onClose, form, setForm, onSubmit }) {
           </div>
         </div>
 
+        {editableFieldCount === 0 && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs"
+            style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)', color: 'rgba(253,224,71,0.9)' }}>
+            <span className="flex-shrink-0 mt-0.5">⚠️</span>
+            <span>Không tìm thấy layer chuẩn. Sản phẩm sẽ đăng không có trường chỉnh sửa. Đặt tên layer đúng quy chuẩn: <code className="bg-black/30 px-1 rounded text-[10px]">text_1, avt_png, logo...</code></span>
+          </div>
+        )}
         <div className="flex gap-3 pt-2">
           <button onClick={onClose}
             className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
@@ -1353,6 +1360,7 @@ export default function PsdEditorPage() {
         form={publishForm}
         setForm={setPublishForm}
         onSubmit={handlePublish}
+        editableFieldCount={layers.filter(l => !!detectLayerRole(l.name)).length}
       />
 
       {/* Export Format Modal */}

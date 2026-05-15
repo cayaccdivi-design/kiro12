@@ -12,6 +12,10 @@ function useKonvaImage(dataUrl) {
   useEffect(() => {
     if (!dataUrl) { setImg(null); return }
     const image = new window.Image()
+    // Set crossOrigin before src to avoid canvas taint from non-data-URL sources
+    if (!dataUrl.startsWith('data:')) {
+      image.crossOrigin = 'anonymous'
+    }
     image.src = dataUrl
     image.onload = () => setImg(image)
   }, [dataUrl])
@@ -278,7 +282,8 @@ export default function CustomerEditorPage() {
       document.body.removeChild(a)
       toast('Da tai ve thanh cong!', 'success', 'Download')
     } catch (err) {
-      toast('Loi khi tai ve. Vui long thu lai.', 'error', 'Download loi')
+      const detail = err?.name === 'SecurityError' ? 'Canvas bị taint do ảnh từ domain khác. Thử lại sau.' : 'Vui lòng thử lại.'
+      toast(detail, 'error', 'Download lỗi')
     }
   }, [product, toast])
 
