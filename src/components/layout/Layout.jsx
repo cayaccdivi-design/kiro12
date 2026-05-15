@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import ToastContainer from '../ui/ToastContainer'
+import ChatWidget from '../ui/ChatWidget'
 
 // Animated background blobs
 function BgBlobs() {
@@ -37,6 +38,7 @@ export default function Layout() {
         </main>
       </div>
       <ToastContainer />
+      <ChatWidget />
     </div>
   )
 }
