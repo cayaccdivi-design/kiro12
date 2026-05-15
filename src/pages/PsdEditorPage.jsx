@@ -6,10 +6,12 @@ import {
   Upload, Eye, EyeOff, Type, Image as ImageIcon, Layers,
   ZoomIn, ZoomOut, Maximize2, Lock, Star, ChevronLeft,
   ChevronRight, RotateCcw, Bold, Italic, X, Loader,
-  PanelLeft, PanelRight
+  PanelLeft, PanelRight, Download
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
+import Modal from '../components/ui/Modal'
 import clsx from 'clsx'
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -449,7 +451,7 @@ function KonvaLayerText({ layer, isSelected, onSelect, onDragEnd, onTransformEnd
 function Toolbar({
   psdFile, psdMeta, zoom, onZoomIn, onZoomOut, onZoomFit,
   showLeft, showRight, onToggleLeft, onToggleRight,
-  userBalance, onExportClick, isLg
+  userBalance, onExportClick, isLg, hasPaid
 }) {
   return (
     <div
@@ -508,19 +510,25 @@ function Toolbar({
           <Star size={11} className="text-yellow-400" />
           <span className="text-xs text-white/70 font-medium">{userBalance ?? 0}</span>
         </div>
-        <button
-          onClick={onExportClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-          style={{
-            background: 'rgba(110,75,255,0.15)',
-            border: '1px solid rgba(110,75,255,0.3)',
-            color: 'rgba(167,139,250,1)',
-          }}
-        >
-          <Lock size={12} />
-          Export
-          <span className="text-[10px] opacity-70">50 ⭐</span>
-        </button>
+        {!psdMeta ? (
+          <button disabled className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold opacity-40 cursor-not-allowed"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <Lock size={12} /> Export
+          </button>
+        ) : hasPaid ? (
+          <button onClick={onExportClick}
+            className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs">
+            <Download size={12} /> Export
+          </button>
+        ) : (
+          <button onClick={onExportClick}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            style={{ background: 'rgba(110,75,255,0.15)', border: '1px solid rgba(110,75,255,0.3)', color: 'rgba(167,139,250,1)' }}
+            title="Thanh toán 50 coins để xuất ảnh chất lượng cao không watermark"
+          >
+            <Lock size={12} /> Export <span className="text-[10px] opacity-70">50 ⭐</span>
+          </button>
+        )}
       </div>
     </div>
   )
@@ -530,7 +538,7 @@ function Toolbar({
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function PsdEditorPage() {
-  const { user } = useAuthStore()
+  const { user, deductBalance } = useAuthStore()
   const { toast } = useAppStore()
 
   // PSD state
@@ -545,6 +553,14 @@ export default function PsdEditorPage() {
   const [selectedLayerId, setSelectedLayerId] = useState(null)
   const [zoom, setZoom] = useState(1)
   const [fitZoom, setFitZoom] = useState(1)
+
+  // Payment / export state
+  const [hasPaid, setHasPaid] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportFormat, setExportFormat] = useState('png')
+  const [exportQuality, setExportQuality] = useState(0.95)
+  const [showWatermark, setShowWatermark] = useState(true)
 
   // Panel visibility
   const [isLg, setIsLg] = useState(window.innerWidth >= 1024)
@@ -595,6 +611,8 @@ export default function PsdEditorPage() {
     setLayers([])
     setPsdMeta(null)
     setSelectedLayerId(null)
+    setHasPaid(false)
+    setShowWatermark(true)
 
     try {
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -744,6 +762,51 @@ export default function PsdEditorPage() {
   const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.05))
   const handleZoomFit = () => setZoom(fitZoom)
 
+  const handlePayment = () => {
+    if (!user) {
+      toast('Vui lòng đăng nhập để thanh toán', 'error', 'Chưa đăng nhập')
+      return
+    }
+    const success = deductBalance(50)
+    if (!success) {
+      toast('Số dư không đủ! Hãy nạp thêm coins.', 'error', 'Thanh toán thất bại')
+      return
+    }
+    setHasPaid(true)
+    setShowPaymentModal(false)
+    toast('Thanh toán thành công! Bạn có thể xuất ảnh.', 'success', 'Đã thanh toán')
+    setShowExportModal(true)
+  }
+
+  const handleExport = async () => {
+    if (!stageRef.current || !psdMeta) return
+    try {
+      // hide watermark temporarily
+      setShowWatermark(false)
+      // wait one frame for re-render
+      await new Promise(r => setTimeout(r, 80))
+      const dataUrl = stageRef.current.toDataURL({
+        mimeType: exportFormat === 'jpg' ? 'image/jpeg' : 'image/png',
+        quality: exportQuality,
+        pixelRatio: 2,
+      })
+      // restore watermark
+      setShowWatermark(true)
+      // trigger download
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `nova-psd-export-${Date.now()}.${exportFormat}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setShowExportModal(false)
+      toast('Xuất ảnh thành công!', 'success', 'Export')
+    } catch (err) {
+      setShowWatermark(true)
+      toast('Lỗi khi xuất ảnh. Vui lòng thử lại.', 'error', 'Export lỗi')
+    }
+  }
+
   const selectedLayer = layers.find(l => l.id === selectedLayerId) || null
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -773,8 +836,9 @@ export default function PsdEditorPage() {
         onToggleLeft={() => setShowLeft(v => !v)}
         onToggleRight={() => setShowRight(v => !v)}
         userBalance={user?.balance}
-        onExportClick={() => toast('Payment required to export', 'info', 'Export locked')}
+        onExportClick={() => hasPaid ? setShowExportModal(true) : setShowPaymentModal(true)}
         isLg={isLg}
+        hasPaid={hasPaid}
       />
 
       {/* Editor body */}
@@ -903,6 +967,7 @@ export default function PsdEditorPage() {
                     offsetX={watermarkFontSize * 4}
                     offsetY={watermarkFontSize / 2}
                     listening={false}
+                    visible={showWatermark}
                   />
 
                   <Transformer ref={transformerRef} />
@@ -922,6 +987,135 @@ export default function PsdEditorPage() {
           isMobile={!isLg}
         />
       </div>
+
+      {/* Payment Modal */}
+      <Modal open={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Xuất ảnh chất lượng cao" size="sm">
+        <div className="p-6 space-y-5">
+          {/* Description */}
+          <div className="flex gap-3 p-4 rounded-2xl" style={{ background: 'rgba(110,75,255,0.1)', border: '1px solid rgba(110,75,255,0.2)' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(110,75,255,0.2)' }}>
+              <Download size={18} className="text-brand-300" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white mb-1">Export không watermark</p>
+              <p className="text-xs text-white/50 leading-relaxed">Tải xuống ảnh PNG/JPG chất lượng cao, không có watermark "NOVA AI STUDIO".</p>
+            </div>
+          </div>
+
+          {/* Price */}
+          <div className="flex items-center justify-between p-4 rounded-2xl"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div>
+              <p className="text-xs text-white/40 mb-1">Giá xuất ảnh</p>
+              <div className="flex items-center gap-2">
+                <Star size={16} className="text-yellow-400" />
+                <span className="text-xl font-bold text-white font-display">50 coins</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-white/40 mb-1">Số dư của bạn</p>
+              <div className="flex items-center gap-1 justify-end">
+                <Star size={13} className="text-yellow-400" />
+                <span className={clsx('text-base font-bold font-display', (user?.balance ?? 0) >= 50 ? 'text-emerald-400' : 'text-rose-400')}>
+                  {user?.balance ?? 0} coins
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Insufficient balance warning */}
+          {(user?.balance ?? 0) < 50 && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: 'rgba(252,165,165,1)' }}>
+              <span>Số dư không đủ.</span>
+              <Link to="/topup" onClick={() => setShowPaymentModal(false)} className="underline font-semibold hover:text-rose-300">Nạp thêm coins →</Link>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button onClick={() => setShowPaymentModal(false)} className="btn-ghost flex-1 py-2.5 text-sm">Hủy</button>
+            <button
+              onClick={handlePayment}
+              disabled={(user?.balance ?? 0) < 50}
+              className={clsx('btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-2',
+                (user?.balance ?? 0) < 50 && 'opacity-50 cursor-not-allowed')}
+            >
+              <Star size={14} /> Thanh toán 50 coins
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Export Format Modal */}
+      <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title="Chọn định dạng xuất" size="sm">
+        <div className="p-6 space-y-5">
+          {/* Format selection */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { format: 'png', label: 'PNG', desc: 'Lossless, hỗ trợ trong suốt', icon: '🖼️' },
+              { format: 'jpg', label: 'JPG', desc: 'File nhỏ hơn, chất lượng cao', icon: '📷' },
+            ].map(({ format, label, desc, icon }) => (
+              <button
+                key={format}
+                onClick={() => setExportFormat(format)}
+                className={clsx(
+                  'p-4 rounded-2xl text-left transition-all',
+                  exportFormat === format
+                    ? 'border-brand-500/50 bg-brand-500/15'
+                    : 'border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.05]'
+                )}
+                style={{ border: exportFormat === format ? '1px solid rgba(110,75,255,0.5)' : '1px solid rgba(255,255,255,0.07)' }}
+              >
+                <div className="text-2xl mb-2">{icon}</div>
+                <p className="text-sm font-semibold text-white">{label}</p>
+                <p className="text-[11px] text-white/40 mt-0.5">{desc}</p>
+                {exportFormat === format && (
+                  <div className="mt-2 w-4 h-4 rounded-full flex items-center justify-center"
+                    style={{ background: 'rgba(110,75,255,0.8)' }}>
+                    <div className="w-2 h-2 rounded-full bg-white" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Quality slider - only for JPG */}
+          {exportFormat === 'jpg' && (
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-xs text-white/40 uppercase tracking-wider">Chất lượng</label>
+                <span className="text-xs font-semibold text-white">{Math.round(exportQuality * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.7}
+                max={1}
+                step={0.05}
+                value={exportQuality}
+                onChange={e => setExportQuality(Number(e.target.value))}
+                className="w-full accent-brand-500"
+              />
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="flex items-center gap-2 text-xs text-white/30 p-3 rounded-xl"
+            style={{ background: 'rgba(255,255,255,0.025)' }}>
+            <Download size={12} className="flex-shrink-0" />
+            <span>Xuất ảnh 2x (Retina) không watermark. Kích thước: {psdMeta?.width ?? 0} x {psdMeta?.height ?? 0}px</span>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button onClick={() => setShowExportModal(false)} className="btn-ghost flex-1 py-2.5 text-sm">Hủy</button>
+            <button onClick={handleExport} className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-2">
+              <Download size={14} /> Xuất ngay
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
