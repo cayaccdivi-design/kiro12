@@ -1,12 +1,22 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer } from 'react-konva'
+import {
+  Stage, Layer, Image as KonvaImage, Text as KonvaText,
+  Rect as KonvaRect, Circle as KonvaCircle, Transformer
+} from 'react-konva'
 import Psd from '@webtoon/psd'
 import {
   Upload, Eye, EyeOff, Type, Image as ImageIcon, Layers,
   ZoomIn, ZoomOut, Maximize2, Lock, Star, ChevronLeft,
   ChevronRight, RotateCcw, Bold, Italic, X, Loader,
-  PanelLeft, PanelRight, Download, Store, ImagePlus
+  PanelLeft, PanelRight, Download, Store, ImagePlus,
+  Undo2, Redo2, Plus, Copy, Trash2, LockKeyhole, Unlock,
+  ChevronsUp, ChevronsDown, ArrowUp, ArrowDown,
+  AlignLeft, AlignCenter, AlignRight,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  Square, Circle as CircleIcon, Sparkles, Wand2, Palette,
+  RotateCw, Sliders, Underline as UnderlineIcon
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { detectLayerRole } from '../utils/layerNaming'
@@ -63,6 +73,95 @@ function useKonvaImage(dataUrl) {
   return img
 }
 
+// ── Layer defaults & factories ────────────────────────────────────────────────
+
+function withDefaults(layer) {
+  // Provides default values for advanced fields so older layers still work
+  return {
+    rotation: 0,
+    opacity: 1,
+    locked: false,
+    // image filters (only applied when type === 'image')
+    brightness: 0,        // -1 .. 1   (Konva range: -1..1)
+    contrast: 0,          // -100 .. 100
+    saturation: 0,        // -2 .. 10  (we use -2..2)
+    blur: 0,              // 0 .. 40
+    grayscale: false,
+    invert: false,
+    // text advanced fields
+    align: 'left',        // left | center | right
+    letterSpacing: 0,
+    lineHeight: 1.2,
+    underline: false,
+    strokeColor: '#000000',
+    strokeWidth: 0,
+    shadowColor: '#000000',
+    shadowBlur: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
+    shadowOpacity: 0.5,
+    // shape fields
+    fill: layer.type === 'shape' ? '#6e4bff' : undefined,
+    shape: layer.type === 'shape' ? (layer.shape || 'rect') : undefined,
+    cornerRadius: 0,
+    ...layer,
+  }
+}
+
+function makeTextLayer({ left = 50, top = 50 } = {}) {
+  return withDefaults({
+    id: uid(),
+    name: 'New Text',
+    type: 'text',
+    visible: true,
+    left, top,
+    width: 320,
+    height: 60,
+    textContent: 'Your text here',
+    originalTextContent: 'Your text here',
+    fontFamily: 'Inter',
+    fontSize: 48,
+    color: '#ffffff',
+    bold: true,
+    italic: false,
+  })
+}
+
+function makeShapeLayer({ shape = 'rect', left = 80, top = 80 } = {}) {
+  return withDefaults({
+    id: uid(),
+    name: shape === 'circle' ? 'Circle' : 'Rectangle',
+    type: 'shape',
+    shape,
+    visible: true,
+    left, top,
+    width: 200,
+    height: shape === 'circle' ? 200 : 140,
+    fill: '#6e4bff',
+    cornerRadius: shape === 'rect' ? 12 : 0,
+  })
+}
+
+function makeImageLayer({ dataUrl, width, height, left = 60, top = 60, name = 'Image' }) {
+  const W = width || 400
+  const H = height || 300
+  return withDefaults({
+    id: uid(),
+    name,
+    type: 'image',
+    visible: true,
+    left, top,
+    width: W,
+    height: H,
+    dataUrl,
+    originalDataUrl: dataUrl,
+  })
+}
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n))
+}
+
 // ── sub-components ─────────────────────────────────────────────────────────────
 
 function Spinner({ label }) {
@@ -78,7 +177,11 @@ function Spinner({ label }) {
 }
 
 function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
-  const TypeIcon = layer.type === 'text' ? Type : ImageIcon
+  const TypeIcon = layer.type === 'text'
+    ? Type
+    : layer.type === 'shape'
+      ? (layer.shape === 'circle' ? CircleIcon : Square)
+      : ImageIcon
   return (
     <motion.div
       layout
@@ -96,7 +199,10 @@ function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
       >
         {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
       </button>
-      <TypeIcon size={13} className={clsx('flex-shrink-0', selected ? 'text-brand-300' : 'text-white/40')} />
+      <TypeIcon size={13} className={clsx('flex-shrink-0',
+        selected ? 'text-brand-300'
+        : layer.type === 'shape' ? 'text-amber-300/70'
+        : 'text-white/40')} />
       {layer.type === 'image' && layer.dataUrl && (
         <img
           src={layer.dataUrl}
@@ -105,7 +211,20 @@ function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
           style={{ border: '1px solid rgba(255,255,255,0.08)' }}
         />
       )}
+      {layer.type === 'shape' && (
+        <div
+          className="w-8 h-8 rounded flex-shrink-0"
+          style={{
+            background: layer.fill || '#6e4bff',
+            borderRadius: layer.shape === 'circle' ? '50%' : 6,
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        />
+      )}
       <span className="truncate flex-1 text-xs">{layer.name}</span>
+      {layer.locked && (
+        <LockKeyhole size={11} className="flex-shrink-0 text-amber-400/70" />
+      )}
       {(() => {
         const role = detectLayerRole(layer.name)
         if (!role) return null
@@ -213,9 +332,40 @@ function LeftPanel({ show, onClose, layers, selectedId, onSelect, onToggleVisibl
 
 const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier', 'Verdana', 'Impact']
 
+// Reusable labeled slider used across all editing panels.
+function Slider({ label, value, onChange, min = 0, max = 100, step = 1, suffix = '', precision = 0 }) {
+  return (
+    <div>
+      <div className="flex justify-between mb-1">
+        <label className="text-[11px] text-white/40 uppercase tracking-wider">{label}</label>
+        <span className="text-[11px] text-white/60 font-mono">
+          {Number(value || 0).toFixed(precision)}{suffix}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value || 0}
+        onChange={e => onChange(Number(e.target.value))}
+        className="w-full accent-brand-500"
+      />
+    </div>
+  )
+}
+
+const SectionHeader = ({ icon: Icon, title }) => (
+  <div className="flex items-center gap-1.5 mb-2 mt-1">
+    {Icon && <Icon size={11} className="text-white/40" />}
+    <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">{title}</span>
+    <div className="flex-1 h-px bg-white/[0.06]" />
+  </div>
+)
+
 function TextControls({ layer, onChange, onReset }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Content</label>
         <textarea
@@ -267,16 +417,84 @@ function TextControls({ layer, onChange, onReset }) {
               onClick={() => onChange({ bold: !layer.bold })}
               className={clsx('w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition-all',
                 layer.bold ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+              title="Bold"
             >B</button>
             <button
               onClick={() => onChange({ italic: !layer.italic })}
               className={clsx('w-9 h-9 rounded-xl flex items-center justify-center text-sm italic transition-all',
                 layer.italic ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+              title="Italic"
             >I</button>
+            <button
+              onClick={() => onChange({ underline: !layer.underline })}
+              className={clsx('w-9 h-9 rounded-xl flex items-center justify-center transition-all',
+                layer.underline ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+              title="Underline"
+            ><UnderlineIcon size={13} /></button>
           </div>
         </div>
       </div>
-      <button onClick={onReset} className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2">
+
+      {/* Alignment */}
+      <div>
+        <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Align</label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[
+            { v: 'left',   I: AlignLeft },
+            { v: 'center', I: AlignCenter },
+            { v: 'right',  I: AlignRight },
+          ].map(({ v, I }) => (
+            <button
+              key={v}
+              onClick={() => onChange({ align: v })}
+              className={clsx('h-9 rounded-xl flex items-center justify-center transition-all',
+                (layer.align || 'left') === v ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+            ><I size={13} /></button>
+          ))}
+        </div>
+      </div>
+
+      {/* Spacing */}
+      <SectionHeader icon={Sliders} title="Spacing" />
+      <Slider label="Letter Spacing" value={layer.letterSpacing || 0} onChange={v => onChange({ letterSpacing: v })} min={-10} max={50} />
+      <Slider label="Line Height" value={layer.lineHeight || 1.2} onChange={v => onChange({ lineHeight: v })} min={0.5} max={3} step={0.05} precision={2} />
+
+      {/* Stroke */}
+      <SectionHeader icon={Palette} title="Stroke" />
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={layer.strokeColor || '#000000'}
+          onChange={e => onChange({ strokeColor: e.target.value })}
+          className="w-12 h-9 rounded-xl cursor-pointer flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+        <div className="flex-1">
+          <Slider label="Width" value={layer.strokeWidth || 0} onChange={v => onChange({ strokeWidth: v })} min={0} max={20} step={0.5} precision={1} suffix="px" />
+        </div>
+      </div>
+
+      {/* Shadow */}
+      <SectionHeader icon={Sparkles} title="Shadow" />
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={layer.shadowColor || '#000000'}
+          onChange={e => onChange({ shadowColor: e.target.value })}
+          className="w-12 h-9 rounded-xl cursor-pointer flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+        <div className="flex-1">
+          <Slider label="Blur" value={layer.shadowBlur || 0} onChange={v => onChange({ shadowBlur: v })} min={0} max={50} suffix="px" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Slider label="Offset X" value={layer.shadowOffsetX || 0} onChange={v => onChange({ shadowOffsetX: v })} min={-30} max={30} suffix="px" />
+        <Slider label="Offset Y" value={layer.shadowOffsetY || 0} onChange={v => onChange({ shadowOffsetY: v })} min={-30} max={30} suffix="px" />
+      </div>
+      <Slider label="Shadow Opacity" value={layer.shadowOpacity ?? 0.5} onChange={v => onChange({ shadowOpacity: v })} min={0} max={1} step={0.05} precision={2} />
+
+      <button onClick={onReset} className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2 mt-2">
         <RotateCcw size={12} /> Reset to original
       </button>
     </div>
@@ -293,7 +511,7 @@ function ImageControls({ layer, onChange, onReset }) {
     reader.readAsDataURL(f)
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {layer.dataUrl && (
         <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
           <img src={layer.dataUrl} alt={layer.name} className="w-full object-contain max-h-40" />
@@ -304,16 +522,183 @@ function ImageControls({ layer, onChange, onReset }) {
         className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2.5"
       >
         <ImageIcon size={13} /> Replace Image
-        <input ref={fileRef} type="file" accept=".png,.jpg,.jpeg" className="hidden" onChange={handleReplace} />
+        <input ref={fileRef} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={handleReplace} />
       </button>
-      <button onClick={onReset} className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2">
+
+      {/* Filters */}
+      <SectionHeader icon={Wand2} title="Adjust" />
+      <Slider label="Brightness" value={layer.brightness || 0} onChange={v => onChange({ brightness: v })} min={-1} max={1} step={0.02} precision={2} />
+      <Slider label="Contrast"   value={layer.contrast || 0}   onChange={v => onChange({ contrast: v })}   min={-100} max={100} />
+      <Slider label="Saturation" value={layer.saturation || 0} onChange={v => onChange({ saturation: v })} min={-2} max={2} step={0.05} precision={2} />
+      <Slider label="Blur"       value={layer.blur || 0}       onChange={v => onChange({ blur: v })}       min={0} max={40} suffix="px" />
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => onChange({ grayscale: !layer.grayscale })}
+          className={clsx('py-2 rounded-xl text-[11px] font-medium transition-all',
+            layer.grayscale ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+        >Grayscale</button>
+        <button
+          onClick={() => onChange({ invert: !layer.invert })}
+          className={clsx('py-2 rounded-xl text-[11px] font-medium transition-all',
+            layer.invert ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+        >Invert</button>
+      </div>
+      <button
+        onClick={() => onChange({ brightness: 0, contrast: 0, saturation: 0, blur: 0, grayscale: false, invert: false })}
+        className="btn-ghost w-full flex items-center justify-center gap-2 text-[11px] py-1.5"
+      >
+        <RotateCcw size={11} /> Reset filters
+      </button>
+
+      <button onClick={onReset} className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2 mt-1">
         <RotateCcw size={12} /> Reset to original
       </button>
     </div>
   )
 }
 
-function RightPanel({ show, onClose, selectedLayer, onLayerChange, onResetLayer, isMobile }) {
+function ShapeControls({ layer, onChange }) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Fill Color</label>
+        <input
+          type="color"
+          value={layer.fill || '#6e4bff'}
+          onChange={e => onChange({ fill: e.target.value })}
+          className="w-full h-9 rounded-xl cursor-pointer"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+      </div>
+      {layer.shape === 'rect' && (
+        <Slider label="Corner Radius" value={layer.cornerRadius || 0} onChange={v => onChange({ cornerRadius: v })} min={0} max={200} suffix="px" />
+      )}
+      <SectionHeader icon={Palette} title="Stroke" />
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={layer.strokeColor || '#000000'}
+          onChange={e => onChange({ strokeColor: e.target.value })}
+          className="w-12 h-9 rounded-xl cursor-pointer flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+        <div className="flex-1">
+          <Slider label="Width" value={layer.strokeWidth || 0} onChange={v => onChange({ strokeWidth: v })} min={0} max={30} step={0.5} precision={1} suffix="px" />
+        </div>
+      </div>
+      <SectionHeader icon={Sparkles} title="Shadow" />
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={layer.shadowColor || '#000000'}
+          onChange={e => onChange({ shadowColor: e.target.value })}
+          className="w-12 h-9 rounded-xl cursor-pointer flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+        <div className="flex-1">
+          <Slider label="Blur" value={layer.shadowBlur || 0} onChange={v => onChange({ shadowBlur: v })} min={0} max={60} suffix="px" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Slider label="Offset X" value={layer.shadowOffsetX || 0} onChange={v => onChange({ shadowOffsetX: v })} min={-40} max={40} suffix="px" />
+        <Slider label="Offset Y" value={layer.shadowOffsetY || 0} onChange={v => onChange({ shadowOffsetY: v })} min={-40} max={40} suffix="px" />
+      </div>
+    </div>
+  )
+}
+
+function TransformControls({ layer, onChange }) {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1 block">X</label>
+          <input type="number" value={Math.round(layer.left)} onChange={e => onChange({ left: Number(e.target.value) })}
+            className="input-glass text-xs py-1.5" />
+        </div>
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1 block">Y</label>
+          <input type="number" value={Math.round(layer.top)} onChange={e => onChange({ top: Number(e.target.value) })}
+            className="input-glass text-xs py-1.5" />
+        </div>
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1 block">W</label>
+          <input type="number" value={Math.round(layer.width)} onChange={e => onChange({ width: Math.max(1, Number(e.target.value)) })}
+            className="input-glass text-xs py-1.5" min={1} />
+        </div>
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1 block">H</label>
+          <input type="number" value={Math.round(layer.height)} onChange={e => onChange({ height: Math.max(1, Number(e.target.value)) })}
+            className="input-glass text-xs py-1.5" min={1} />
+        </div>
+      </div>
+      <Slider label="Rotation" value={layer.rotation || 0} onChange={v => onChange({ rotation: v })} min={-180} max={180} suffix="°" />
+      <Slider label="Opacity"  value={layer.opacity ?? 1}  onChange={v => onChange({ opacity: v })}  min={0} max={1} step={0.02} precision={2} />
+    </div>
+  )
+}
+
+function AlignmentControls({ onAlign }) {
+  const buttons = [
+    { k: 'l',  I: AlignStartVertical,    title: 'Align Left' },
+    { k: 'cx', I: AlignCenterVertical,   title: 'Center Horizontally' },
+    { k: 'r',  I: AlignEndVertical,      title: 'Align Right' },
+    { k: 't',  I: AlignStartHorizontal,  title: 'Align Top' },
+    { k: 'cy', I: AlignCenterHorizontal, title: 'Center Vertically' },
+    { k: 'b',  I: AlignEndHorizontal,    title: 'Align Bottom' },
+  ]
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {buttons.map(({ k, I, title }) => (
+        <button
+          key={k}
+          onClick={() => onAlign(k)}
+          title={title}
+          className="btn-ghost h-9 rounded-xl flex items-center justify-center"
+        >
+          <I size={14} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function OrderControls({ layer, onAction }) {
+  return (
+    <div>
+      <div className="grid grid-cols-4 gap-1.5 mb-2">
+        <button onClick={() => onAction('toFront')} title="Bring to Front" className="btn-ghost h-9 rounded-xl flex items-center justify-center"><ChevronsUp size={14} /></button>
+        <button onClick={() => onAction('forward')} title="Bring Forward"  className="btn-ghost h-9 rounded-xl flex items-center justify-center"><ArrowUp size={14} /></button>
+        <button onClick={() => onAction('backward')} title="Send Backward" className="btn-ghost h-9 rounded-xl flex items-center justify-center"><ArrowDown size={14} /></button>
+        <button onClick={() => onAction('toBack')} title="Send to Back"    className="btn-ghost h-9 rounded-xl flex items-center justify-center"><ChevronsDown size={14} /></button>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        <button
+          onClick={() => onAction('duplicate')}
+          className="btn-ghost h-9 rounded-xl flex items-center justify-center gap-1 text-[11px]"
+          title="Duplicate (Ctrl+D)"
+        ><Copy size={12} /> Copy</button>
+        <button
+          onClick={() => onAction('toggleLock')}
+          className={clsx('h-9 rounded-xl flex items-center justify-center gap-1 text-[11px]',
+            layer.locked
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              : 'btn-ghost')}
+          title="Lock / Unlock"
+        >{layer.locked ? <LockKeyhole size={12} /> : <Unlock size={12} />} {layer.locked ? 'Locked' : 'Lock'}</button>
+        <button
+          onClick={() => onAction('delete')}
+          className="h-9 rounded-xl flex items-center justify-center gap-1 text-[11px] transition-all"
+          style={{ background: 'rgba(239,68,68,0.12)', color: 'rgba(252,165,165,1)', border: '1px solid rgba(239,68,68,0.25)' }}
+          title="Delete (Del)"
+        ><Trash2 size={12} /> Delete</button>
+      </div>
+    </div>
+  )
+}
+
+function RightPanel({ show, onClose, selectedLayer, onLayerChange, onResetLayer, onLayerAction, onAlign, isMobile }) {
   const panelContent = (
     <div className="w-72 flex-shrink-0 flex flex-col overflow-hidden h-full"
       style={{
@@ -339,30 +724,76 @@ function RightPanel({ show, onClose, selectedLayer, onLayerChange, onResetLayer,
               <PanelRight size={18} className="text-white/20" />
             </div>
             <p className="text-xs text-white/30">Select a layer to edit properties</p>
+            <p className="text-[10px] text-white/20 mt-2 max-w-[180px] leading-relaxed">
+              Pick a layer in the left panel or click directly on the canvas.
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Layer header */}
             <div className="flex items-center gap-2 p-3 rounded-xl"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
               {selectedLayer.type === 'text'
                 ? <Type size={14} className="text-brand-300" />
-                : <ImageIcon size={14} className="text-cyan-400" />}
+                : selectedLayer.type === 'shape'
+                  ? (selectedLayer.shape === 'circle'
+                      ? <CircleIcon size={14} className="text-amber-300" />
+                      : <Square size={14} className="text-amber-300" />)
+                  : <ImageIcon size={14} className="text-cyan-400" />}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-white truncate">{selectedLayer.name}</p>
+                <input
+                  value={selectedLayer.name}
+                  onChange={e => onLayerChange({ name: e.target.value })}
+                  className="w-full bg-transparent text-xs font-medium text-white truncate outline-none"
+                />
                 <p className="text-[10px] text-white/30 capitalize">{selectedLayer.type} layer</p>
               </div>
               <span className={clsx('text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase',
                 selectedLayer.type === 'text'
                   ? 'bg-brand-500/20 text-brand-300 border border-brand-500/30'
-                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30')}>
+                  : selectedLayer.type === 'shape'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30')}>
                 {selectedLayer.type}
               </span>
             </div>
+
+            {/* Order / Action toolbar */}
+            <div>
+              <SectionHeader icon={Layers} title="Layer" />
+              <OrderControls layer={selectedLayer} onAction={onLayerAction} />
+            </div>
+
+            {/* Transform */}
+            <div>
+              <SectionHeader icon={RotateCw} title="Transform" />
+              <TransformControls layer={selectedLayer} onChange={onLayerChange} />
+            </div>
+
+            {/* Align to canvas */}
+            <div>
+              <SectionHeader icon={AlignCenter} title="Align to canvas" />
+              <AlignmentControls onAlign={onAlign} />
+            </div>
+
+            {/* Type-specific controls */}
             {selectedLayer.type === 'text' && (
-              <TextControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
+              <div>
+                <SectionHeader icon={Type} title="Text" />
+                <TextControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
+              </div>
             )}
             {selectedLayer.type === 'image' && (
-              <ImageControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
+              <div>
+                <SectionHeader icon={ImageIcon} title="Image" />
+                <ImageControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
+              </div>
+            )}
+            {selectedLayer.type === 'shape' && (
+              <div>
+                <SectionHeader icon={Square} title="Shape" />
+                <ShapeControls layer={selectedLayer} onChange={onLayerChange} />
+              </div>
             )}
           </div>
         )}
@@ -431,6 +862,36 @@ function KonvaLayerImage({ layer, isSelected, onSelect, onDragEnd, onTransformEn
     }
   }, [isSelected, transformerRef])
 
+  // Konva filters require node.cache(); re-cache when image / filter values change
+  const filters = useMemo(() => {
+    const Konva = window.Konva
+    if (!Konva) return []
+    const out = []
+    if (layer.brightness) out.push(Konva.Filters.Brighten)
+    if (layer.contrast)   out.push(Konva.Filters.Contrast)
+    if (layer.saturation || layer.grayscale) out.push(Konva.Filters.HSL)
+    if (layer.blur > 0)   out.push(Konva.Filters.Blur)
+    if (layer.grayscale)  out.push(Konva.Filters.Grayscale)
+    if (layer.invert)     out.push(Konva.Filters.Invert)
+    return out
+  }, [layer.brightness, layer.contrast, layer.saturation, layer.blur, layer.grayscale, layer.invert])
+
+  useEffect(() => {
+    const node = nodeRef.current
+    if (!node || !img) return
+    if (filters.length > 0) {
+      try {
+        node.cache()
+      } catch { /* ignore cache errors */ }
+    } else {
+      try { node.clearCache() } catch {}
+    }
+    node.getLayer()?.batchDraw()
+  }, [img, filters,
+      layer.brightness, layer.contrast, layer.saturation,
+      layer.blur, layer.grayscale, layer.invert,
+      layer.width, layer.height])
+
   if (!img) return null
   return (
     <KonvaImage
@@ -440,9 +901,17 @@ function KonvaLayerImage({ layer, isSelected, onSelect, onDragEnd, onTransformEn
       y={layer.top}
       width={layer.width}
       height={layer.height}
+      rotation={layer.rotation || 0}
+      opacity={layer.opacity ?? 1}
+      filters={filters}
+      brightness={layer.brightness || 0}
+      contrast={layer.contrast || 0}
+      saturation={layer.saturation || 0}
+      blurRadius={layer.blur || 0}
       onClick={() => onSelect(layer.id)}
       onTap={() => onSelect(layer.id)}
-      draggable
+      draggable={!layer.locked}
+      listening={!layer.locked}
       onDragEnd={e => onDragEnd(layer.id, e.target.x(), e.target.y())}
       onTransformEnd={e => onTransformEnd(layer.id, e)}
     />
@@ -464,6 +933,7 @@ function KonvaLayerText({ layer, isSelected, onSelect, onDragEnd, onTransformEnd
   }, [isSelected, transformerRef])
 
   const fontStyle = [layer.bold ? 'bold' : '', layer.italic ? 'italic' : ''].filter(Boolean).join(' ') || 'normal'
+  const textDecoration = layer.underline ? 'underline' : ''
 
   return (
     <KonvaText
@@ -475,11 +945,81 @@ function KonvaLayerText({ layer, isSelected, onSelect, onDragEnd, onTransformEnd
       fontSize={layer.fontSize || 16}
       fill={layer.color || '#ffffff'}
       fontStyle={fontStyle}
+      textDecoration={textDecoration}
+      align={layer.align || 'left'}
+      letterSpacing={layer.letterSpacing || 0}
+      lineHeight={layer.lineHeight || 1.2}
+      rotation={layer.rotation || 0}
+      opacity={layer.opacity ?? 1}
+      stroke={layer.strokeWidth > 0 ? layer.strokeColor : undefined}
+      strokeWidth={layer.strokeWidth || 0}
+      shadowColor={layer.shadowBlur > 0 || layer.shadowOffsetX || layer.shadowOffsetY ? layer.shadowColor : undefined}
+      shadowBlur={layer.shadowBlur || 0}
+      shadowOffsetX={layer.shadowOffsetX || 0}
+      shadowOffsetY={layer.shadowOffsetY || 0}
+      shadowOpacity={layer.shadowOpacity ?? 0.5}
       onClick={() => onSelect(layer.id)}
       onTap={() => onSelect(layer.id)}
-      draggable
+      draggable={!layer.locked}
+      listening={!layer.locked}
       onDragEnd={e => onDragEnd(layer.id, e.target.x(), e.target.y())}
       onTransformEnd={e => onTransformEnd(layer.id, e)}
+    />
+  )
+}
+
+function KonvaLayerShape({ layer, isSelected, onSelect, onDragEnd, onTransformEnd, transformerRef }) {
+  const nodeRef = useRef(null)
+
+  useEffect(() => {
+    if (!transformerRef?.current) return
+    if (isSelected && nodeRef.current) {
+      transformerRef.current.nodes([nodeRef.current])
+      transformerRef.current.getLayer()?.batchDraw()
+    } else if (transformerRef.current.nodes().includes(nodeRef.current)) {
+      transformerRef.current.nodes([])
+      transformerRef.current.getLayer()?.batchDraw()
+    }
+  }, [isSelected, transformerRef])
+
+  const common = {
+    ref: nodeRef,
+    x: layer.left,
+    y: layer.top,
+    rotation: layer.rotation || 0,
+    opacity: layer.opacity ?? 1,
+    fill: layer.fill || '#6e4bff',
+    stroke: layer.strokeWidth > 0 ? layer.strokeColor : undefined,
+    strokeWidth: layer.strokeWidth || 0,
+    shadowColor: layer.shadowBlur > 0 ? layer.shadowColor : undefined,
+    shadowBlur: layer.shadowBlur || 0,
+    shadowOffsetX: layer.shadowOffsetX || 0,
+    shadowOffsetY: layer.shadowOffsetY || 0,
+    onClick: () => onSelect(layer.id),
+    onTap: () => onSelect(layer.id),
+    draggable: !layer.locked,
+    listening: !layer.locked,
+    onDragEnd: e => onDragEnd(layer.id, e.target.x(), e.target.y()),
+    onTransformEnd: e => onTransformEnd(layer.id, e),
+  }
+
+  if (layer.shape === 'circle') {
+    const r = Math.min(layer.width, layer.height) / 2
+    return (
+      <KonvaCircle
+        {...common}
+        x={layer.left + layer.width / 2}
+        y={layer.top + layer.height / 2}
+        radius={r}
+      />
+    )
+  }
+  return (
+    <KonvaRect
+      {...common}
+      width={layer.width}
+      height={layer.height}
+      cornerRadius={layer.cornerRadius || 0}
     />
   )
 }
@@ -685,10 +1225,92 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
 
 // ── Toolbar ─────────────────────────────────────────────────────────────────────
 
+function AddLayerMenu({ onAddText, onAddRect, onAddCircle, onAddImage, disabled }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const fileRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  const handleImagePick = (e) => {
+    const f = e.target.files[0]
+    if (!f) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new window.Image()
+      img.onload = () => onAddImage(ev.target.result, img.width, img.height, f.name)
+      img.src = ev.target.result
+    }
+    reader.readAsDataURL(f)
+    e.target.value = ''
+    setOpen(false)
+  }
+
+  const item = (Icon, label, onClick) => (
+    <button
+      onClick={() => { onClick(); setOpen(false) }}
+      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/[0.06] transition-colors text-left"
+    >
+      <Icon size={13} className="text-brand-300" />
+      <span>{label}</span>
+    </button>
+  )
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        disabled={disabled}
+        onClick={() => setOpen(v => !v)}
+        className={clsx(
+          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
+          disabled
+            ? 'opacity-40 cursor-not-allowed text-white/40'
+            : 'text-white/70 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08]'
+        )}
+        title="Add new layer"
+      >
+        <Plus size={13} /> Add
+      </button>
+      {open && !disabled && (
+        <div
+          className="absolute left-0 top-full mt-1 w-44 rounded-xl overflow-hidden z-30"
+          style={{
+            background: 'rgba(20,20,28,0.96)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {item(Type,        'Text',      onAddText)}
+          {item(Square,      'Rectangle', onAddRect)}
+          {item(CircleIcon,  'Circle',    onAddCircle)}
+          {item(ImagePlus,   'Image...',  () => fileRef.current?.click())}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp"
+            className="hidden"
+            onChange={handleImagePick}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Toolbar({
   psdFile, psdMeta, zoom, onZoomIn, onZoomOut, onZoomFit,
   showLeft, showRight, onToggleLeft, onToggleRight,
-  userBalance, onExportClick, isLg, hasPaid, isAdmin, onPublishClick
+  userBalance, onExportClick, isLg, hasPaid, isAdmin, onPublishClick,
+  canUndo, canRedo, onUndo, onRedo,
+  onAddText, onAddRect, onAddCircle, onAddImage,
 }) {
   return (
     <div
@@ -727,6 +1349,41 @@ function Toolbar({
           </span>
         )}
       </div>
+
+      {/* Undo / Redo / Add */}
+      {psdMeta && (
+        <>
+          <div className="w-px h-4 bg-white/10" />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+              className={clsx('p-1.5 rounded-lg transition-colors',
+                canUndo ? 'text-white/60 hover:text-white hover:bg-white/[0.06]' : 'text-white/20 cursor-not-allowed')}
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Y)"
+              className={clsx('p-1.5 rounded-lg transition-colors',
+                canRedo ? 'text-white/60 hover:text-white hover:bg-white/[0.06]' : 'text-white/20 cursor-not-allowed')}
+            >
+              <Redo2 size={14} />
+            </button>
+          </div>
+          <div className="w-px h-4 bg-white/10" />
+          <AddLayerMenu
+            onAddText={onAddText}
+            onAddRect={onAddRect}
+            onAddCircle={onAddCircle}
+            onAddImage={onAddImage}
+          />
+        </>
+      )}
+
       <div className="flex-1" />
       <div className="flex items-center gap-1">
         <button onClick={onZoomOut} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors">
@@ -795,10 +1452,57 @@ export default function PsdEditorPage() {
   // PSD state
   const [psdFile, setPsdFile] = useState(null)
   const [psdMeta, setPsdMeta] = useState(null) // { width, height }
-  const [layers, setLayers] = useState([])
+  const [layers, setLayersState] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [dragging, setDragging] = useState(false)
+
+  // History (undo/redo) — only snapshot for "committed" actions
+  const historyRef = useRef({ past: [], future: [] })
+  const [historyVer, setHistoryVer] = useState(0)
+  const HISTORY_LIMIT = 50
+
+  // setLayers wrapper that records history snapshot of CURRENT layers before updating
+  const setLayers = useCallback((updater, opts = {}) => {
+    setLayersState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      if (!opts.noHistory && next !== prev) {
+        const h = historyRef.current
+        h.past.push(prev)
+        if (h.past.length > HISTORY_LIMIT) h.past.shift()
+        h.future = []
+        setHistoryVer(v => v + 1)
+      }
+      return next
+    })
+  }, [])
+
+  const undo = useCallback(() => {
+    const h = historyRef.current
+    if (h.past.length === 0) return
+    setLayersState(prev => {
+      h.future.push(prev)
+      const next = h.past.pop()
+      setHistoryVer(v => v + 1)
+      return next
+    })
+  }, [])
+
+  const redo = useCallback(() => {
+    const h = historyRef.current
+    if (h.future.length === 0) return
+    setLayersState(prev => {
+      h.past.push(prev)
+      const next = h.future.pop()
+      setHistoryVer(v => v + 1)
+      return next
+    })
+  }, [])
+
+  const canUndo = historyRef.current.past.length > 0
+  const canRedo = historyRef.current.future.length > 0
+  // historyVer is referenced to keep the canUndo/canRedo memoization fresh on re-renders
+  void historyVer
 
   // Editor state
   const [selectedLayerId, setSelectedLayerId] = useState(null)
@@ -866,7 +1570,9 @@ export default function PsdEditorPage() {
     setPsdFile(file)
     setLoading(true)
     setLoadingMsg('Reading file...')
-    setLayers([])
+    setLayersState([])
+    historyRef.current = { past: [], future: [] }
+    setHistoryVer(v => v + 1)
     setPsdMeta(null)
     setSelectedLayerId(null)
     setHasPaid(false)
@@ -920,7 +1626,7 @@ export default function PsdEditorPage() {
           }
         }
 
-        const entry = {
+        const entry = withDefaults({
           id: uid(),
           name: node.name || `Layer ${i + 1}`,
           type: isText ? 'text' : 'image',
@@ -941,11 +1647,13 @@ export default function PsdEditorPage() {
           // image props
           dataUrl: !isText ? dataUrl : undefined,
           originalDataUrl: !isText ? originalDataUrl : undefined,
-        }
+        })
         result.push(entry)
       }
 
-      setLayers(result)
+      setLayersState(result)
+      historyRef.current = { past: [], future: [] }
+      setHistoryVer(v => v + 1)
       setLoadingMsg('')
       toast(`Loaded ${result.length} layers`, 'success', psd.width + ' x ' + psd.height)
     } catch (err) {
@@ -978,7 +1686,7 @@ export default function PsdEditorPage() {
 
   const toggleLayerVisible = useCallback((id) => {
     setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l))
-  }, [])
+  }, [setLayers])
 
   const selectLayer = useCallback((id) => {
     setSelectedLayerId(prev => prev === id ? null : id)
@@ -986,7 +1694,7 @@ export default function PsdEditorPage() {
 
   const updateLayer = useCallback((changes) => {
     setLayers(prev => prev.map(l => l.id === selectedLayerId ? { ...l, ...changes } : l))
-  }, [selectedLayerId])
+  }, [selectedLayerId, setLayers])
 
   const resetLayer = useCallback(() => {
     setLayers(prev => prev.map(l => {
@@ -995,11 +1703,11 @@ export default function PsdEditorPage() {
       if (l.type === 'image') return { ...l, dataUrl: l.originalDataUrl }
       return l
     }))
-  }, [selectedLayerId])
+  }, [selectedLayerId, setLayers])
 
   const handleLayerDragEnd = useCallback((id, x, y) => {
     setLayers(prev => prev.map(l => l.id === id ? { ...l, left: x, top: y } : l))
-  }, [])
+  }, [setLayers])
 
   const handleLayerTransformEnd = useCallback((id, e) => {
     const node = e.target
@@ -1009,10 +1717,120 @@ export default function PsdEditorPage() {
       top: node.y(),
       width: Math.max(5, node.width() * node.scaleX()),
       height: Math.max(5, node.height() * node.scaleY()),
+      rotation: node.rotation(),
     } : l))
     e.target.scaleX(1)
     e.target.scaleY(1)
-  }, [])
+  }, [setLayers])
+
+  // ── Add / duplicate / delete / order / lock ──────────────────────────────────
+
+  const addLayer = useCallback((newLayer) => {
+    setLayers(prev => [...prev, newLayer])
+    setSelectedLayerId(newLayer.id)
+  }, [setLayers])
+
+  const handleAddText = useCallback(() => {
+    if (!psdMeta) return
+    const cx = psdMeta.width / 2 - 160
+    const cy = psdMeta.height / 2 - 30
+    addLayer(makeTextLayer({ left: Math.max(0, cx), top: Math.max(0, cy) }))
+  }, [psdMeta, addLayer])
+
+  const handleAddRect = useCallback(() => {
+    if (!psdMeta) return
+    const cx = psdMeta.width / 2 - 100
+    const cy = psdMeta.height / 2 - 70
+    addLayer(makeShapeLayer({ shape: 'rect', left: Math.max(0, cx), top: Math.max(0, cy) }))
+  }, [psdMeta, addLayer])
+
+  const handleAddCircle = useCallback(() => {
+    if (!psdMeta) return
+    const cx = psdMeta.width / 2 - 100
+    const cy = psdMeta.height / 2 - 100
+    addLayer(makeShapeLayer({ shape: 'circle', left: Math.max(0, cx), top: Math.max(0, cy) }))
+  }, [psdMeta, addLayer])
+
+  const handleAddImage = useCallback((dataUrl, w, h, name) => {
+    if (!psdMeta) return
+    // Fit imported image to ~60% of the canvas width while keeping aspect ratio
+    const maxW = psdMeta.width * 0.6
+    const ratio = w / h
+    let width = Math.min(w, maxW)
+    let height = width / ratio
+    if (height > psdMeta.height * 0.8) {
+      height = psdMeta.height * 0.8
+      width = height * ratio
+    }
+    const left = (psdMeta.width - width) / 2
+    const top  = (psdMeta.height - height) / 2
+    addLayer(makeImageLayer({ dataUrl, width, height, left, top, name: name || 'Image' }))
+    toast('Image added', 'success', 'Layer')
+  }, [psdMeta, addLayer, toast])
+
+  const duplicateLayer = useCallback((id) => {
+    setLayers(prev => {
+      const idx = prev.findIndex(l => l.id === id)
+      if (idx === -1) return prev
+      const src = prev[idx]
+      const copy = { ...src, id: uid(), name: `${src.name} copy`, left: src.left + 20, top: src.top + 20, locked: false }
+      const next = [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)]
+      // select the new copy on next tick
+      setTimeout(() => setSelectedLayerId(copy.id), 0)
+      return next
+    })
+  }, [setLayers])
+
+  const deleteLayer = useCallback((id) => {
+    setLayers(prev => prev.filter(l => l.id !== id))
+    setSelectedLayerId(prev => prev === id ? null : prev)
+  }, [setLayers])
+
+  const toggleLock = useCallback((id) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, locked: !l.locked } : l))
+  }, [setLayers])
+
+  const reorderLayer = useCallback((id, action) => {
+    setLayers(prev => {
+      const idx = prev.findIndex(l => l.id === id)
+      if (idx === -1) return prev
+      const arr = [...prev]
+      const [item] = arr.splice(idx, 1)
+      let target = idx
+      if (action === 'toFront')  target = arr.length
+      if (action === 'toBack')   target = 0
+      if (action === 'forward')  target = Math.min(arr.length, idx + 1)
+      if (action === 'backward') target = Math.max(0, idx - 1)
+      arr.splice(target, 0, item)
+      return arr
+    })
+  }, [setLayers])
+
+  const handleLayerAction = useCallback((action) => {
+    if (!selectedLayerId) return
+    if (action === 'duplicate')  return duplicateLayer(selectedLayerId)
+    if (action === 'delete')     return deleteLayer(selectedLayerId)
+    if (action === 'toggleLock') return toggleLock(selectedLayerId)
+    if (['toFront','toBack','forward','backward'].includes(action)) {
+      return reorderLayer(selectedLayerId, action)
+    }
+  }, [selectedLayerId, duplicateLayer, deleteLayer, toggleLock, reorderLayer])
+
+  const handleAlign = useCallback((dir) => {
+    if (!selectedLayerId || !psdMeta) return
+    setLayers(prev => prev.map(l => {
+      if (l.id !== selectedLayerId) return l
+      const W = psdMeta.width, H = psdMeta.height
+      let { left, top, width, height } = l
+      if (dir === 'l')  left = 0
+      if (dir === 'cx') left = (W - width) / 2
+      if (dir === 'r')  left = W - width
+      if (dir === 't')  top = 0
+      if (dir === 'cy') top = (H - height) / 2
+      if (dir === 'b')  top = H - height
+      return { ...l, left, top }
+    }))
+  }, [selectedLayerId, psdMeta, setLayers])
 
   // ── Zoom controls ────────────────────────────────────────────────────────────
 
@@ -1136,6 +1954,73 @@ export default function PsdEditorPage() {
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId) || null
 
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!psdMeta) return
+
+    const isTypingTarget = (el) => {
+      if (!el) return false
+      const tag = el.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+    }
+
+    const onKey = (e) => {
+      // Don't hijack typing in form fields
+      if (isTypingTarget(e.target)) return
+
+      const meta = e.ctrlKey || e.metaKey
+      const k = e.key.toLowerCase()
+
+      // Undo / Redo
+      if (meta && k === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if ((meta && k === 'y') || (meta && k === 'z' && e.shiftKey)) {
+        e.preventDefault()
+        redo()
+        return
+      }
+
+      if (!selectedLayerId) return
+
+      // Duplicate
+      if (meta && k === 'd') {
+        e.preventDefault()
+        duplicateLayer(selectedLayerId)
+        return
+      }
+      // Delete
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const sel = layers.find(l => l.id === selectedLayerId)
+        if (!sel || sel.locked) return
+        e.preventDefault()
+        deleteLayer(selectedLayerId)
+        return
+      }
+      // Arrow nudge (Shift = 10x)
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        const sel = layers.find(l => l.id === selectedLayerId)
+        if (!sel || sel.locked) return
+        e.preventDefault()
+        const step = e.shiftKey ? 10 : 1
+        let dx = 0, dy = 0
+        if (e.key === 'ArrowLeft')  dx = -step
+        if (e.key === 'ArrowRight') dx =  step
+        if (e.key === 'ArrowUp')    dy = -step
+        if (e.key === 'ArrowDown')  dy =  step
+        setLayers(prev => prev.map(l =>
+          l.id === selectedLayerId ? { ...l, left: l.left + dx, top: l.top + dy } : l
+        ))
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [psdMeta, selectedLayerId, layers, undo, redo, duplicateLayer, deleteLayer, setLayers])
+
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-6 text-center px-4">
@@ -1184,6 +2069,14 @@ export default function PsdEditorPage() {
         hasPaid={hasPaid}
         isAdmin={isAdmin}
         onPublishClick={() => setShowPublishModal(true)}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        onAddText={handleAddText}
+        onAddRect={handleAddRect}
+        onAddCircle={handleAddCircle}
+        onAddImage={handleAddImage}
       />
 
       {/* Export session active banner */}
@@ -1308,6 +2201,19 @@ export default function PsdEditorPage() {
                         />
                       )
                     }
+                    if (layer.type === 'shape') {
+                      return (
+                        <KonvaLayerShape
+                          key={layer.id}
+                          layer={layer}
+                          isSelected={isSelected}
+                          onSelect={selectLayer}
+                          onDragEnd={handleLayerDragEnd}
+                          onTransformEnd={handleLayerTransformEnd}
+                          transformerRef={isSelected ? transformerRef : null}
+                        />
+                      )
+                    }
                     return null
                   })}
 
@@ -1341,6 +2247,8 @@ export default function PsdEditorPage() {
           selectedLayer={selectedLayer}
           onLayerChange={updateLayer}
           onResetLayer={resetLayer}
+          onLayerAction={handleLayerAction}
+          onAlign={handleAlign}
           isMobile={!isLg}
         />
       </div>
