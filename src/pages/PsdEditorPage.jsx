@@ -1052,6 +1052,11 @@ export default function PsdEditorPage() {
       // Admin should name layers: text_1, text_2, text_3, title_logo, text_logo, nvat_png, avt_png, logo
       console.warn('[Nova] No named layers found - product published without editable fields. Layer naming convention: text_1, text_2, text_3, title_logo, text_logo, nvat_png, avt_png, logo')
     }
+    const totalImgSize = [previewDataUrl, ...(publishForm.extraImages || [])].reduce((acc, img) => acc + (img?.length || 0), 0)
+    if (totalImgSize > 2 * 1024 * 1024) {
+      toast('Tổng dung lượng ảnh quá lớn (>2MB). Vui lòng giảm ảnh bổ sung.', 'error', 'Quá dung lượng')
+      return
+    }
     addProduct({
       ...publishForm,
       previewDataUrl,

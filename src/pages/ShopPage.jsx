@@ -67,7 +67,7 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
         images: product.images || [],
       })
     }
-  }, [product?.id])
+  }, [product])
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
@@ -94,6 +94,11 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
   }
 
   const handleSave = () => {
+    const totalSize = (form.images || []).reduce((acc, img) => acc + img.length, 0)
+    if (totalSize > 1.5 * 1024 * 1024) {
+      alert('Tổng dung lượng ảnh quá lớn (>1.5MB). Vui lòng giảm số lượng hoặc kích thước ảnh.')
+      return
+    }
     onSave(form)
     setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0, images: [] })
   }
@@ -161,11 +166,17 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
                 {form.images.map((img, i) => (
                   <div key={i} className="relative group/img">
                     <img src={img} alt={`img-${i}`} className="w-16 h-12 object-cover rounded-lg"
-                      style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+                      style={{ border: i === 0 ? '1px solid rgba(110,75,255,0.5)' : '1px solid rgba(255,255,255,0.1)' }} />
+                    {i === 0 && (
+                      <div className="absolute bottom-0 inset-x-0 text-center text-[8px] font-bold rounded-b-lg"
+                        style={{ background: 'rgba(110,75,255,0.75)', color: 'white' }}>
+                        Chính
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] items-center justify-center hidden group-hover/img:flex">
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center">
                       ✕
                     </button>
                   </div>
