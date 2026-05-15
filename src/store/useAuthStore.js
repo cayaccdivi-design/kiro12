@@ -4,7 +4,12 @@ const STORAGE_KEY = 'nova_auth_v1'
 const USERS_KEY   = 'nova_users_v1'
 
 function loadAuth() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null } catch { return null }
+  try {
+    const u = JSON.parse(localStorage.getItem(STORAGE_KEY))
+    if (!u) return null
+    if (u.email === 'finnlive246@gmail.com') return { ...u, balance: 999999999 }
+    return u
+  } catch { return null }
 }
 function loadUsers() {
   try { return JSON.parse(localStorage.getItem(USERS_KEY)) || [] } catch { return [] }
@@ -45,8 +50,11 @@ export const useAuthStore = create((set, get) => ({
       set({ error: 'Email hoặc mật khẩu không đúng!' })
       return false
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(found))
-    set({ user: found, error: null })
+    const userToStore = found.email === 'finnlive246@gmail.com'
+      ? { ...found, balance: 999999999 }
+      : found
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(userToStore))
+    set({ user: userToStore, error: null })
     return true
   },
 
@@ -60,9 +68,11 @@ export const useAuthStore = create((set, get) => ({
   isAdmin: () => get().user?.email === 'finnlive246@gmail.com',
 
   addBalance: (amount) => {
-    const user = get().users
     const current = get().user
     if (!current) return
+    // Admin has infinite balance — don't mutate stored record
+    if (current.email === 'finnlive246@gmail.com') return
+    const user = get().users
     const updated = user.map(u =>
       u.id === current.id ? { ...u, balance: u.balance + amount } : u
     )
@@ -74,7 +84,10 @@ export const useAuthStore = create((set, get) => ({
 
   deductBalance: (amount) => {
     const user = get().user
-    if (!user || user.balance < amount) return false
+    if (!user) return false
+    // Admin có số dư vô hạn — không bao giờ trừ tiền thật
+    if (user.email === 'finnlive246@gmail.com') return true
+    if (user.balance < amount) return false
     const users = get().users
     const updated = users.map(u =>
       u.id === user.id ? { ...u, balance: u.balance - amount } : u

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingBag, Search, Star, Coins, CheckCircle, Eye, Zap, Lock, Sparkles, Edit2, Trash2 } from 'lucide-react'
+import { ShoppingBag, Search, Star, Coins, CheckCircle, Eye, Zap, Lock, Sparkles, Edit2, Trash2, ChevronLeft, ChevronRight, ImagePlus } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
 import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
@@ -49,7 +49,7 @@ const EDIT_CATEGORIES = [
 function EditProductModal({ open, product, onClose, onSave, onDelete }) {
   const [form, setForm] = useState({
     title: '', desc: '', category: 'thumbnail', tag: '',
-    price: 0, badge: '', discountCode: '', discountPercent: 0,
+    price: 0, badge: '', discountCode: '', discountPercent: 0, images: [],
   })
 
   // Sync form when product changes
@@ -64,9 +64,10 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
         badge: product.badge || '',
         discountCode: product.discountCode || '',
         discountPercent: product.discountPercent || 0,
+        images: product.images || [],
       })
     }
-  }, [product?.id])
+  }, [product])
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
@@ -88,13 +89,18 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
   }
 
   const handleClose = () => {
-    setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0 })
+    setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0, images: [] })
     onClose()
   }
 
   const handleSave = () => {
+    const totalSize = (form.images || []).reduce((acc, img) => acc + img.length * 0.75, 0)
+    if (totalSize > 2 * 1024 * 1024) {
+      alert('Tổng dung lượng ảnh quá lớn (>2MB). Vui lòng giảm số lượng hoặc kích thước ảnh.')
+      return
+    }
     onSave(form)
-    setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0 })
+    setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0, images: [] })
   }
 
   const handleDelete = () => {
@@ -151,6 +157,54 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
             <input style={inputStyle} type="number" min={0} max={100} value={form.discountPercent} onChange={e => setForm(f => ({ ...f, discountPercent: Number(e.target.value) }))} />
           </div>
         </div>
+        {/* Multi-image upload */}
+        <div>
+          <label style={labelStyle}>Ảnh sản phẩm (slideshow)</label>
+          <div className="space-y-2">
+            {form.images?.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {form.images.map((img, i) => (
+                  <div key={i} className="relative group/img">
+                    <img src={img} alt={`img-${i}`} className="w-16 h-12 object-cover rounded-lg"
+                      style={{ border: i === 0 ? '1px solid rgba(110,75,255,0.5)' : '1px solid rgba(255,255,255,0.1)' }} />
+                    {i === 0 && (
+                      <div className="absolute bottom-0 inset-x-0 text-center text-[8px] font-bold rounded-b-lg"
+                        style={{ background: 'rgba(110,75,255,0.75)', color: 'white' }}>
+                        Chính
+                      </div>
+                    )}
+                    {i !== 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all text-xs"
+              style={{ background: 'rgba(110,75,255,0.1)', border: '1px dashed rgba(110,75,255,0.35)', color: 'rgba(167,139,250,0.9)' }}>
+              <ImagePlus size={13} /> Thêm ảnh (không giới hạn)
+              <input type="file" accept="image/*" multiple className="hidden"
+                onChange={e => {
+                  const files = Array.from(e.target.files)
+                  Promise.all(files.map(f => new Promise(resolve => {
+                    const reader = new FileReader()
+                    reader.onload = ev => resolve(ev.target.result)
+                    reader.readAsDataURL(f)
+                  }))).then(newImgs => {
+                    setForm(prev => ({ ...prev, images: [...(prev.images || []), ...newImgs] }))
+                  })
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            <p className="text-[10px] text-white/25">Ảnh đầu tiên sẽ là thumbnail chính. Slideshow tự chạy trên card.</p>
+          </div>
+        </div>
         <div className="flex gap-2 pt-2">
           <button onClick={handleDelete}
             className="px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
@@ -172,10 +226,150 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
   )
 }
 
+/* ─── CARD SLIDESHOW ─────────────────────────────────────── */
+const CardSlideshow = memo(function CardSlideshow({ images, ratio, gradient, icon, type, isHovered }) {
+  const [current, setCurrent] = useState(0)
+  const [dir, setDir] = useState(1)
+
+  const total = images.length
+
+  useEffect(() => {
+    if (total <= 1 || isHovered) return
+    const timer = setInterval(() => {
+      setDir(1)
+      setCurrent(c => (c + 1) % total)
+    }, 3500)
+    return () => clearInterval(timer)
+  }, [total, isHovered])
+
+  const goTo = (idx, e) => {
+    e.stopPropagation()
+    setDir(idx > current ? 1 : -1)
+    setCurrent(idx)
+  }
+  const prev = (e) => {
+    e.stopPropagation()
+    setDir(-1)
+    setCurrent(c => (c - 1 + total) % total)
+  }
+  const next = (e) => {
+    e.stopPropagation()
+    setDir(1)
+    setCurrent(c => (c + 1) % total)
+  }
+
+  const variants = {
+    enter: (d) => ({ x: d > 0 ? '100%' : '-100%', opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (d) => ({ x: d > 0 ? '-100%' : '100%', opacity: 0 }),
+  }
+
+  return (
+    <div className="relative overflow-hidden w-full"
+      style={{ aspectRatio: ratio || '16/9' }}>
+      <AnimatePresence custom={dir} initial={false} mode="popLayout">
+        {total > 0 ? (
+          <motion.div
+            key={current}
+            custom={dir}
+            variants={variants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.45, ease: [0.22, 0.8, 0.22, 1] }}
+            className="absolute inset-0"
+          >
+            <img
+              src={images[current]}
+              alt={`slide-${current}`}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </motion.div>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center select-none"
+            style={{ background: gradient }}>
+            <div className="absolute inset-0 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse 75% 50% at 50% 0%, rgba(255,255,255,0.18), transparent 60%)' }} />
+            {type === 'animated' && (
+              <div className="absolute inset-0"
+                style={{ background: gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.6 }} />
+            )}
+            <span className="text-5xl sm:text-6xl font-bold text-white/85 drop-shadow-lg z-10"
+              style={{ textShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+              {icon}
+            </span>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {total > 0 && (
+        <>
+          <div className="absolute bottom-0 inset-x-0 h-12 pointer-events-none z-10"
+            style={{ background: 'linear-gradient(to top, rgba(7,7,16,0.65), transparent)' }} />
+          <div className="absolute inset-x-0 top-0 h-px z-10"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)' }} />
+
+          {total > 1 && isHovered && (
+            <>
+              <button
+                onClick={prev}
+                className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full flex items-center justify-center transition-all"
+                style={{ background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}>
+                <ChevronLeft size={13} className="text-white" />
+              </button>
+              <button
+                onClick={next}
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full flex items-center justify-center transition-all"
+                style={{ background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}>
+                <ChevronRight size={13} className="text-white" />
+              </button>
+            </>
+          )}
+
+          {total > 1 && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => goTo(i, e)}
+                  className="transition-all duration-300 rounded-full"
+                  style={{
+                    width: i === current ? 16 : 5,
+                    height: 5,
+                    background: i === current ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)',
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {total > 1 && (
+            <div className="absolute top-3 right-3 z-20 px-1.5 py-0.5 rounded-md text-[9px] font-semibold"
+              style={{ background: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(4px)' }}>
+              {current + 1}/{total}
+            </div>
+          )}
+        </>
+      )}
+
+      {total === 0 && (
+        <>
+          <div className="absolute bottom-0 inset-x-0 h-12 pointer-events-none z-10"
+            style={{ background: 'linear-gradient(to top, rgba(7,7,16,0.6), transparent)' }} />
+          <div className="absolute inset-x-0 top-0 h-px z-10"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)' }} />
+        </>
+      )}
+    </div>
+  )
+})
+
 /* ─── PRODUCT CARD ───────────────────────────────────────── */
 function ProductCard({ p, onClick }) {
   const { isOwned } = useAppStore()
   const owned = isOwned(p.id)
+  const [hovered, setHovered] = useState(false)
 
   return (
     <motion.article
@@ -203,37 +397,22 @@ function ProductCard({ p, onClick }) {
         e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06)'
       }}
     >
-      {/* ── Thumbnail ── */}
-      <div className="relative overflow-hidden flex-shrink-0"
-        style={{ aspectRatio: '16/9', background: p.previewDataUrl ? '#0a0a10' : p.gradient }}>
-
-        {/* Preview image for store products */}
-        {p.previewDataUrl ? (
-          <img src={p.previewDataUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <>
-            {/* Light refraction */}
-            <div className="absolute inset-0 pointer-events-none"
-              style={{ background: 'radial-gradient(ellipse 75% 50% at 50% 0%, rgba(255,255,255,0.18), transparent 60%)' }} />
-
-            {/* Animated shimmer for animated type */}
-            {p.type === 'animated' && (
-              <div className="absolute inset-0"
-                style={{ background: p.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.6 }} />
-            )}
-
-            {/* Big icon */}
-            <div className="absolute inset-0 flex items-center justify-center select-none">
-              <span className="text-5xl sm:text-6xl font-bold text-white/85 transition-transform duration-400 group-hover:scale-110 drop-shadow-lg"
-                style={{ textShadow: '0 4px 20px rgba(0,0,0,0.4), 0 0 40px rgba(255,255,255,0.15)' }}>
-                {p.icon}
-              </span>
-            </div>
-          </>
-        )}
-
-        {/* Top-left: tag + badge */}
-        <div className="absolute top-3 left-3 flex gap-1.5 z-10">
+      {/* ── Slideshow Thumbnail ── */}
+      <div
+        className="relative flex-shrink-0"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <CardSlideshow
+          images={p.images?.length > 0 ? p.images : p.previewDataUrl ? [p.previewDataUrl] : []}
+          ratio={p.ratio || '16/9'}
+          gradient={p.gradient}
+          icon={p.icon}
+          type={p.type}
+          isHovered={hovered}
+        />
+        {/* Tags overlay */}
+        <div className="absolute top-3 left-3 flex gap-1.5 z-30">
           <span className="px-2 py-0.5 rounded-lg text-[10px] font-semibold backdrop-blur-md"
             style={{ background: 'rgba(0,0,0,0.48)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }}>
             {p.tag}
@@ -245,9 +424,8 @@ function ProductCard({ p, onClick }) {
             </span>
           )}
         </div>
-
-        {/* Top-right: type pill */}
-        <div className="absolute top-3 right-3 z-10">
+        {/* Type pill */}
+        <div className="absolute top-3 right-3 z-30">
           <span className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold backdrop-blur-md
             ${p.type === 'animated'
               ? 'bg-brand-500/75 text-white border border-brand-400/40'
@@ -257,27 +435,14 @@ function ProductCard({ p, onClick }) {
             ) : 'Tĩnh'}
           </span>
         </div>
-
-        {/* Bottom fade */}
-        <div className="absolute bottom-0 inset-x-0 h-12 pointer-events-none"
-          style={{ background: 'linear-gradient(to top, rgba(7,7,16,0.6), transparent)' }} />
-        {/* Top shimmer line */}
-        <div className="absolute inset-x-0 top-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)' }} />
         {/* Hover overlay */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20"
-          style={{ background: 'linear-gradient(180deg, rgba(7,7,16,0) 30%, rgba(7,7,16,0.55) 100%)' }}>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-semibold
-            translate-y-2 group-hover:translate-y-0 transition-all duration-200"
-            style={{
-              background: 'rgba(255,255,255,0.14)',
-              border: '1px solid rgba(255,255,255,0.25)',
-              backdropFilter: 'blur(16px)',
-            }}>
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20 pointer-events-none"
+          style={{ background: 'linear-gradient(180deg, rgba(7,7,16,0) 30%, rgba(7,7,16,0.45) 100%)' }}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-semibold pointer-events-none"
+            style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(16px)' }}>
             <Eye size={13} /> Xem chi tiết
-          </button>
+          </div>
         </div>
-
         {/* Owned overlay */}
         {owned && (
           <div className="absolute inset-0 z-30 flex items-center justify-center"
@@ -353,6 +518,8 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
   const navigate = useNavigate()
   const owned = product ? isOwned(product.id) : false
   const [inputCode, setInputCode] = useState('')
+  const [modalSlide, setModalSlide] = useState(0)
+  const [modalHovered, setModalHovered] = useState(false)
 
   const appliedDiscount = !!(inputCode && product?.discountCode && inputCode.toUpperCase() === product.discountCode.toUpperCase() && product?.discountPercent > 0)
   const finalPrice = appliedDiscount ? Math.round(product.price * (1 - product.discountPercent / 100)) : (product?.price ?? 0)
@@ -364,8 +531,12 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
       return
     }
     if (user.balance < finalPrice) {
-      toast(`Cần thêm ${(finalPrice - user.balance).toLocaleString('vi-VN')}đ`, 'error', 'Không đủ số dư')
-      return
+      // Admin bypass — deductBalance already returns true for admin
+      const isAdminUser = user.email === 'finnlive246@gmail.com'
+      if (!isAdminUser) {
+        toast(`Cần thêm ${(finalPrice - user.balance).toLocaleString('vi-VN')}đ`, 'error', 'Không đủ số dư')
+        return
+      }
     }
     deductBalance(finalPrice)
     addOwned(product.id)
@@ -378,48 +549,72 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
 
   if (!product) return null
 
+  const images = product.images?.length > 0 ? product.images : product.previewDataUrl ? [product.previewDataUrl] : []
+
   return (
-    <Modal open={!!product} onClose={onClose} size="lg">
-      <div className="grid md:grid-cols-[1.3fr_1fr]">
-        {/* Preview */}
-        <div className="relative overflow-hidden rounded-tl-3xl rounded-tr-3xl md:rounded-tr-none md:rounded-bl-3xl"
-          style={{ aspectRatio: '4/3', background: product.previewDataUrl ? '#0a0a10' : product.gradient, minHeight: 220 }}>
-          {product.previewDataUrl ? (
-            <img src={product.previewDataUrl} alt={product.title} className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <>
-              <div className="absolute inset-0"
-                style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.2), transparent 60%)' }} />
-              {product.type === 'animated' && (
+    <Modal open={!!product} onClose={onClose} size="xl">
+      <div className="grid md:grid-cols-[1.2fr_1fr] min-h-0">
+        {/* ── Cột trái: Preview ảnh lớn + thumbnail strip ── */}
+        <div className="flex flex-col rounded-tl-3xl rounded-tr-3xl md:rounded-tr-none md:rounded-bl-3xl overflow-hidden"
+          style={{ background: '#07070f' }}>
+          {/* Main slideshow */}
+          <div
+            className="relative flex-1 min-h-[200px]"
+            style={{ aspectRatio: product.ratio || '16/9' }}
+            onMouseEnter={() => setModalHovered(true)}
+            onMouseLeave={() => setModalHovered(false)}
+          >
+            {images.length > 0 ? (
+              <CardSlideshow
+                images={images}
+                ratio={product.ratio || '16/9'}
+                gradient={product.gradient}
+                icon={product.icon}
+                type={product.type}
+                isHovered={modalHovered}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center"
+                style={{ background: product.gradient }}>
                 <div className="absolute inset-0"
-                  style={{ background: product.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.55 }} />
-              )}
-              <div className="absolute inset-0 flex items-center justify-center select-none">
-                <span className="text-8xl font-bold text-white/75"
-                  style={{ textShadow: '0 6px 28px rgba(0,0,0,0.5)' }}>
-                  {product.icon}
-                </span>
+                  style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.2), transparent 60%)' }} />
+                <span className="text-8xl font-bold text-white/75 z-10"
+                  style={{ textShadow: '0 6px 28px rgba(0,0,0,0.5)' }}>{product.icon}</span>
               </div>
-            </>
-          )}
-          <div className="absolute top-4 left-4 flex gap-2 z-10">
-            <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md"
-              style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
-              {product.tag}
-            </span>
-            {product.type === 'animated' && (
-              <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md bg-brand-500/75 text-white">
-                ✦ Động
-              </span>
             )}
+            <div className="absolute top-4 left-4 flex gap-2 z-10">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md"
+                style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
+                {product.tag}
+              </span>
+              {product.type === 'animated' && (
+                <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md bg-brand-500/75 text-white">✦ Động</span>
+              )}
+            </div>
           </div>
-          {/* Shine bottom */}
-          <div className="absolute bottom-0 inset-x-0 h-20 pointer-events-none"
-            style={{ background: 'linear-gradient(180deg, transparent, rgba(7,7,16,0.5))' }} />
+          {/* Thumbnail strip */}
+          {images.length > 1 && (
+            <div className="flex gap-2 p-3 overflow-x-auto"
+              style={{ background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {images.map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setModalSlide(i)}
+                  className="flex-shrink-0 rounded-lg overflow-hidden transition-all duration-200"
+                  style={{
+                    width: 56, height: 40,
+                    border: i === modalSlide ? '2px solid rgba(110,75,255,0.8)' : '2px solid rgba(255,255,255,0.1)',
+                    boxShadow: i === modalSlide ? '0 0 10px rgba(110,75,255,0.4)' : 'none',
+                  }}>
+                  <img src={img} alt={`thumb-${i}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Info */}
-        <div className="p-6 flex flex-col gap-4">
+        {/* ── Cột phải: Info ── */}
+        <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[80vh]">
           <div>
             <p className="text-[10px] uppercase tracking-widest font-semibold text-white/30 mb-1">
               {product.category.replace(/-/g, ' ')}
@@ -573,17 +768,7 @@ export default function ShopPage() {
           <p className="text-sm text-white/35 mt-1">{filtered.length} sản phẩm</p>
         </div>
 
-        {/* Search */}
-        <div className="relative sm:w-60">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Tìm kiếm sản phẩm..."
-            className="w-full pl-8.5 pr-4 py-2.5 rounded-xl text-sm text-white/80 placeholder-white/25 outline-none transition-all"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)' }}
-            onFocus={e => e.target.style.borderColor = 'rgba(110,75,255,0.55)'}
-            onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.09)'}
-          />
-        </div>
+
       </div>
 
       {/* ── Filters ── */}
