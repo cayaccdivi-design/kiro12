@@ -672,8 +672,9 @@ export default function PsdEditorPage() {
           // text props
           textContent: isText ? (typeof node.text === 'string' ? node.text : (node.text?.content ?? '')) : undefined,
           originalTextContent: isText ? (typeof node.text === 'string' ? node.text : (node.text?.content ?? '')) : undefined,
-          fontFamily: isText ? (node.text?.font?.names?.[0] || node.textProperties?.runData?.[0]?.fontName || 'Inter') : undefined,
-          fontSize: isText ? (node.text?.font?.sizes?.[0] || node.textProperties?.runData?.[0]?.fontSize || 16) : undefined,
+          // TODO: font extraction requires walking EngineDict.StyleRun.RunArray[0].RunData.Font.Name (non-trivial in v0.4.x)
+          fontFamily: isText ? (node.textProperties?.EngineDict?.StyleRun?.RunArray?.[0]?.RunData?.Font?.Name || 'Inter') : undefined,
+          fontSize: isText ? (node.textProperties?.EngineDict?.StyleRun?.RunArray?.[0]?.RunData?.Font?.Size || 16) : undefined,
           color: '#ffffff', // TODO: parse from node.textProperties EngineData (non-trivial in v0.4.x)
           bold: false,
           italic: false,
