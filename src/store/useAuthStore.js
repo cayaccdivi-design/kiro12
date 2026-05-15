@@ -57,6 +57,8 @@ export const useAuthStore = create((set, get) => ({
 
   clearError: () => set({ error: null }),
 
+  isAdmin: () => get().user?.email === 'finnlive246@gmail.com',
+
   addBalance: (amount) => {
     const user = get().users
     const current = get().user

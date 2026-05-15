@@ -6,10 +6,11 @@ import {
   Upload, Eye, EyeOff, Type, Image as ImageIcon, Layers,
   ZoomIn, ZoomOut, Maximize2, Lock, Star, ChevronLeft,
   ChevronRight, RotateCcw, Bold, Italic, X, Loader,
-  PanelLeft, PanelRight, Download
+  PanelLeft, PanelRight, Download, Store
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
+import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
 import Modal from '../components/ui/Modal'
 import clsx from 'clsx'
@@ -18,6 +19,24 @@ import clsx from 'clsx'
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
+}
+
+function detectRatio(w, h) {
+  if (!w || !h) return '16/9'
+  const r = w / h
+  const candidates = [
+    { ratio: '16/9', val: 16 / 9 },
+    { ratio: '1/1',  val: 1 },
+    { ratio: '5/2',  val: 5 / 2 },
+    { ratio: '3/1',  val: 3 },
+  ]
+  let best = candidates[0]
+  let bestDiff = Math.abs(r - best.val)
+  for (const c of candidates) {
+    const diff = Math.abs(r - c.val)
+    if (diff < bestDiff) { bestDiff = diff; best = c }
+  }
+  return best.ratio
 }
 
 async function rgbaToDataUrl(rgba, width, height) {
@@ -443,12 +462,166 @@ function KonvaLayerText({ layer, isSelected, onSelect, onDragEnd, onTransformEnd
   )
 }
 
+// ── Publish Modal ──────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  { value: 'thumbnail',      label: 'Thumbnail' },
+  { value: 'logo',           label: 'Logo' },
+  { value: 'banner-shop',    label: 'Banner Shop' },
+  { value: 'banner-youtube', label: 'Banner YouTube' },
+  { value: 'banner-discord', label: 'Banner Discord' },
+]
+
+function PublishModal({ open, onClose, form, setForm, onSubmit }) {
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.09)',
+    borderRadius: 12,
+    color: 'rgba(255,255,255,0.85)',
+    padding: '8px 12px',
+    width: '100%',
+    outline: 'none',
+    fontSize: 13,
+  }
+  const labelStyle = {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    display: 'block',
+    marginBottom: 6,
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Đăng sản phẩm lên cửa hàng" size="md">
+      <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        {/* Title */}
+        <div>
+          <label style={labelStyle}>Tiêu đề *</label>
+          <input
+            style={inputStyle}
+            value={form.title}
+            onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+            placeholder="Tên sản phẩm..."
+          />
+        </div>
+
+        {/* Description */}
+        <div>
+          <label style={labelStyle}>Mô tả</label>
+          <textarea
+            style={{ ...inputStyle, minHeight: 72, resize: 'vertical' }}
+            value={form.desc}
+            onChange={e => setForm(f => ({ ...f, desc: e.target.value }))}
+            placeholder="Mô tả ngắn về sản phẩm..."
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Category */}
+          <div>
+            <label style={labelStyle}>Danh mục</label>
+            <select
+              style={inputStyle}
+              value={form.category}
+              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+            >
+              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+
+          {/* Tag */}
+          <div>
+            <label style={labelStyle}>Tag ngắn (tối đa 12 ký tự)</label>
+            <input
+              style={inputStyle}
+              value={form.tag}
+              maxLength={12}
+              onChange={e => setForm(f => ({ ...f, tag: e.target.value }))}
+              placeholder="e.g. Gaming"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Price */}
+          <div>
+            <label style={labelStyle}>Giá (coins)</label>
+            <input
+              style={inputStyle}
+              type="number"
+              min={0}
+              value={form.price}
+              onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))}
+            />
+          </div>
+
+          {/* Badge */}
+          <div>
+            <label style={labelStyle}>Badge</label>
+            <select
+              style={inputStyle}
+              value={form.badge}
+              onChange={e => setForm(f => ({ ...f, badge: e.target.value }))}
+            >
+              <option value="">Không có</option>
+              <option value="NEW">NEW</option>
+              <option value="HOT">HOT</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Discount code */}
+          <div>
+            <label style={labelStyle}>Mã giảm giá (tùy chọn)</label>
+            <input
+              style={inputStyle}
+              value={form.discountCode}
+              onChange={e => setForm(f => ({ ...f, discountCode: e.target.value }))}
+              placeholder="e.g. SALE20"
+            />
+          </div>
+
+          {/* Discount percent */}
+          <div>
+            <label style={labelStyle}>% Giảm (0–100)</label>
+            <input
+              style={inputStyle}
+              type="number"
+              min={0}
+              max={100}
+              value={form.discountPercent}
+              onChange={e => setForm(f => ({ ...f, discountPercent: Number(e.target.value) }))}
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.6)' }}>
+            Hủy
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={!form.title.trim()}
+            className="flex-1 btn-primary py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Store size={14} /> Đăng lên cửa hàng
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Toolbar ─────────────────────────────────────────────────────────────────────
 
 function Toolbar({
   psdFile, psdMeta, zoom, onZoomIn, onZoomOut, onZoomFit,
   showLeft, showRight, onToggleLeft, onToggleRight,
-  userBalance, onExportClick, isLg, hasPaid
+  userBalance, onExportClick, isLg, hasPaid, isAdmin, onPublishClick
 }) {
   return (
     <div
@@ -526,6 +699,18 @@ function Toolbar({
             <Lock size={12} /> Export <span className="text-[10px] opacity-70">50 ⭐</span>
           </button>
         )}
+        {isAdmin && psdMeta && (
+          <>
+            <div className="w-px h-4 bg-white/10" />
+            <button
+              onClick={onPublishClick}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={{ background: 'rgba(43,242,192,0.12)', border: '1px solid rgba(43,242,192,0.3)', color: 'rgba(43,242,192,1)' }}
+            >
+              <Store size={12} /> Đăng lên cửa hàng
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -536,7 +721,9 @@ function Toolbar({
 
 export default function PsdEditorPage() {
   const { user, deductBalance } = useAuthStore()
+  const isAdmin = useAuthStore(s => s.isAdmin())
   const { toast } = useAppStore()
+  const addProduct = useShopStore(s => s.addProduct)
 
   // PSD state
   const [psdFile, setPsdFile] = useState(null)
@@ -550,6 +737,13 @@ export default function PsdEditorPage() {
   const [selectedLayerId, setSelectedLayerId] = useState(null)
   const [zoom, setZoom] = useState(1)
   const [fitZoom, setFitZoom] = useState(1)
+
+  // Publish state
+  const [showPublishModal, setShowPublishModal] = useState(false)
+  const [publishForm, setPublishForm] = useState({
+    title: '', desc: '', category: 'thumbnail', tag: '',
+    price: 0, badge: '', discountCode: '', discountPercent: 0,
+  })
 
   // Payment / export state
   const [hasPaid, setHasPaid] = useState(false)
@@ -759,6 +953,25 @@ export default function PsdEditorPage() {
   const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.05))
   const handleZoomFit = () => setZoom(fitZoom)
 
+  const handlePublish = () => {
+    if (!stageRef.current || !psdMeta) return
+    const previewDataUrl = stageRef.current.toDataURL({ pixelRatio: 1 })
+    const ratio = detectRatio(psdMeta.width, psdMeta.height)
+    addProduct({
+      ...publishForm,
+      previewDataUrl,
+      ratio,
+      width: psdMeta.width,
+      height: psdMeta.height,
+      psdFileName: psdFile?.name || '',
+      sold: 0,
+      createdAt: new Date().toISOString(),
+    })
+    toast('Đã đăng sản phẩm lên cửa hàng!', 'success', 'Publish')
+    setShowPublishModal(false)
+    setPublishForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0 })
+  }
+
   const handlePayment = () => {
     if (!user) {
       toast('Vui lòng đăng nhập để thanh toán', 'error', 'Chưa đăng nhập')
@@ -813,7 +1026,23 @@ export default function PsdEditorPage() {
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId) || null
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-6 text-center px-4">
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center"
+          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <Lock size={32} className="text-rose-400" />
+        </div>
+        <div>
+          <h2 className="font-display text-xl font-bold text-white mb-2">Chỉ dành cho Admin</h2>
+          <p className="text-sm text-white/40">Bạn không có quyền truy cập trang này.</p>
+        </div>
+        <Link to="/" className="btn-primary px-6 py-2.5 text-sm flex items-center gap-2">
+          <ChevronLeft size={16} /> Quay lại trang chủ
+        </Link>
+      </div>
+    )
+  }
 
   const stageWidth = psdMeta ? psdMeta.width * zoom : 0
   const stageHeight = psdMeta ? psdMeta.height * zoom : 0
@@ -843,6 +1072,8 @@ export default function PsdEditorPage() {
         onExportClick={() => hasPaid ? setShowExportModal(true) : setShowPaymentModal(true)}
         isLg={isLg}
         hasPaid={hasPaid}
+        isAdmin={isAdmin}
+        onPublishClick={() => setShowPublishModal(true)}
       />
 
       {/* Export session active banner */}
@@ -1063,6 +1294,15 @@ export default function PsdEditorPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Publish Modal */}
+      <PublishModal
+        open={showPublishModal}
+        onClose={() => setShowPublishModal(false)}
+        form={publishForm}
+        setForm={setPublishForm}
+        onSubmit={handlePublish}
+      />
 
       {/* Export Format Modal */}
       <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title="Chọn định dạng xuất" size="sm">
