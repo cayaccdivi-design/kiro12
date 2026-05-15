@@ -8,6 +8,7 @@ import RemoveBgPage from './pages/RemoveBgPage'
 import PsdEditorPage from './pages/PsdEditorPage'
 import ResourcesPage from './pages/ResourcesPage'
 import TopupPage from './pages/TopupPage'
+import CustomerEditorPage from './pages/CustomerEditorPage'
 import { useAuthStore } from './store/useAuthStore'
 
 function ProtectedRoute({ children }) {
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/gift" element={<GiftPage />} />
         <Route path="/remove-bg" element={<RemoveBgPage />} />
         <Route path="/psd-editor" element={<ProtectedRoute><PsdEditorPage /></ProtectedRoute>} />
+        <Route path="/editor/:productId" element={<ProtectedRoute><CustomerEditorPage /></ProtectedRoute>} />
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/topup" element={
           <ProtectedRoute><TopupPage /></ProtectedRoute>

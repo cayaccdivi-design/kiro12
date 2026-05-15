@@ -492,6 +492,14 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
               </button>
             )}
 
+            {owned && product.editableFields?.length > 0 && (
+              <button
+                onClick={() => { onClose(); navigate(`/editor/${product.id}`) }}
+                className="w-full btn-primary py-3 text-sm flex items-center justify-center gap-2"
+              >
+                ✏️ Tùy chỉnh & Tải về
+              </button>
+            )}
             {owned ? (
               <button disabled
                 className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 text-emerald-400"
