@@ -6,7 +6,7 @@ import {
   Upload, Eye, EyeOff, Type, Image as ImageIcon, Layers,
   ZoomIn, ZoomOut, Maximize2, Lock, Star, ChevronLeft,
   ChevronRight, RotateCcw, Bold, Italic, X, Loader,
-  PanelLeft, PanelRight, Download, Store
+  PanelLeft, PanelRight, Download, Store, ImagePlus
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { detectLayerRole } from '../utils/layerNaming'
@@ -626,6 +626,44 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
             <span>Không tìm thấy layer chuẩn. Sản phẩm sẽ đăng không có trường chỉnh sửa. Đặt tên layer đúng quy chuẩn: <code className="bg-black/30 px-1 rounded text-[10px]">text_1, avt_png, logo...</code></span>
           </div>
         )}
+        {/* Extra images for slideshow */}
+        <div>
+          <label style={labelStyle}>Ảnh bổ sung (slideshow) — tùy chọn</label>
+          <div className="space-y-2">
+            {form.extraImages?.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {form.extraImages.map((img, i) => (
+                  <div key={i} className="relative group/img">
+                    <img src={img} alt={`extra-${i}`} className="w-16 h-12 object-cover rounded-lg"
+                      style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, extraImages: f.extraImages.filter((_, j) => j !== i) }))}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center"
+                      style={{ fontSize: 9 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer text-xs"
+              style={{ background: 'rgba(110,75,255,0.1)', border: '1px dashed rgba(110,75,255,0.35)', color: 'rgba(167,139,250,0.9)' }}>
+              <ImagePlus size={13} /> Thêm ảnh preview bổ sung
+              <input type="file" accept="image/*" multiple className="hidden"
+                onChange={e => {
+                  const files = Array.from(e.target.files)
+                  Promise.all(files.map(f => new Promise(resolve => {
+                    const reader = new FileReader()
+                    reader.onload = ev => resolve(ev.target.result)
+                    reader.readAsDataURL(f)
+                  }))).then(newImgs => {
+                    setForm(prev => ({ ...prev, extraImages: [...(prev.extraImages || []), ...newImgs] }))
+                  })
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+        </div>
         <div className="flex gap-3 pt-2">
           <button onClick={onClose}
             className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
@@ -771,7 +809,7 @@ export default function PsdEditorPage() {
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [publishForm, setPublishForm] = useState({
     title: '', desc: '', category: 'thumbnail', tag: '',
-    price: 0, badge: '', discountCode: '', discountPercent: 0,
+    price: 0, badge: '', discountCode: '', discountPercent: 0, extraImages: [],
   })
 
   // Payment / export state
@@ -1024,10 +1062,11 @@ export default function PsdEditorPage() {
       sold: 0,
       createdAt: new Date().toISOString(),
       editableFields,
+      images: [previewDataUrl, ...(publishForm.extraImages || [])],
     })
     toast('Đã đăng sản phẩm lên cửa hàng!', 'success', 'Publish')
     setShowPublishModal(false)
-    setPublishForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0 })
+    setPublishForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0, extraImages: [] })
   }
 
   const handlePayment = () => {
