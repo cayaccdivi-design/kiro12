@@ -20,6 +20,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const { user, logout } = useAuthStore()
+  const isAdmin = useAuthStore(s => s.isAdmin())
   const { sidebarOpen, setSidebarOpen, mobileSidebarOpen, setMobileSidebarOpen, toast } = useAppStore()
   const navigate = useNavigate()
 
@@ -64,7 +65,9 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map(({ to, icon: Icon, label, badge, end }) => (
+        {NAV_ITEMS.map(({ to, icon: Icon, label, badge, end }) => {
+          if (to === '/psd-editor' && !isAdmin) return null
+          return (
           <NavLink key={to} to={to} end={end}
             onClick={() => mobile && setMobileSidebarOpen(false)}
             className={({ isActive }) => clsx(
@@ -105,7 +108,8 @@ export default function Sidebar() {
               )}
             </>)}
           </NavLink>
-        ))}
+          )
+        })}
       </nav>
 
       {/* User + Actions */}

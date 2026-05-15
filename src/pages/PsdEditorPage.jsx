@@ -536,6 +536,7 @@ function Toolbar({
 
 export default function PsdEditorPage() {
   const { user, deductBalance } = useAuthStore()
+  const isAdmin = useAuthStore(s => s.isAdmin())
   const { toast } = useAppStore()
 
   // PSD state
@@ -813,7 +814,23 @@ export default function PsdEditorPage() {
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId) || null
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-6 text-center px-4">
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center"
+          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <Lock size={32} className="text-rose-400" />
+        </div>
+        <div>
+          <h2 className="font-display text-xl font-bold text-white mb-2">Chỉ dành cho Admin</h2>
+          <p className="text-sm text-white/40">Bạn không có quyền truy cập trang này.</p>
+        </div>
+        <Link to="/" className="btn-primary px-6 py-2.5 text-sm flex items-center gap-2">
+          <ChevronLeft size={16} /> Quay lại trang chủ
+        </Link>
+      </div>
+    )
+  }
 
   const stageWidth = psdMeta ? psdMeta.width * zoom : 0
   const stageHeight = psdMeta ? psdMeta.height * zoom : 0
