@@ -28,7 +28,13 @@
       <a href="#about">About</a>
       <a href="#contact">Contact</a>
     </nav>
-    <a href="#contact" class="btn btn-primary nav-cta">Hire me</a>
+    <div class="nav-actions">
+      <button class="hearts-balance" id="heartsBtn" title="Số dư tim của bạn">
+        <span class="heart-icon">♥</span>
+        <span id="heartsCount">1000</span>
+      </button>
+      <a href="#shop" class="btn btn-primary nav-cta">Mua ngay</a>
+    </div>
     <button class="menu-toggle" aria-label="Open menu">
       <span></span><span></span><span></span>
     </button>
@@ -148,6 +154,57 @@
       </article>
     </div>
   </section>
+
+  <!-- ============= SHOP ============= -->
+  <section id="shop" class="section shop-section">
+    <div class="section-head">
+      <span class="eyebrow">Digital Shop</span>
+      <h2>Cửa hàng <span class="grad">tài nguyên thiết kế</span></h2>
+      <p>Thumbnail, Logo, Banner cho Shop / YouTube / Discord — đủ phiên bản tĩnh & động. Đổi tim lấy thiết kế ngay.</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="shop-toolbar glass">
+      <div class="filter-group" id="categoryFilter">
+        <button class="chip active" data-cat="all">Tất cả</button>
+        <button class="chip" data-cat="thumbnail">Thumbnail</button>
+        <button class="chip" data-cat="logo">Logo</button>
+        <button class="chip" data-cat="banner-shop">Banner Shop</button>
+        <button class="chip" data-cat="banner-youtube">Banner YouTube</button>
+        <button class="chip" data-cat="banner-discord">Banner Discord</button>
+      </div>
+      <div class="filter-group secondary" id="typeFilter">
+        <button class="chip mini active" data-type="all">Tất cả</button>
+        <button class="chip mini" data-type="static">Tĩnh</button>
+        <button class="chip mini" data-type="animated">Động ✨</button>
+      </div>
+    </div>
+
+    <!-- Product grid (rendered by JS) -->
+    <div class="shop-grid" id="shopGrid"></div>
+
+    <p class="shop-empty" id="shopEmpty" hidden>Không có sản phẩm phù hợp với bộ lọc.</p>
+  </section>
+
+  <!-- Lightbox (image viewer) -->
+  <div class="lightbox" id="lightbox" aria-hidden="true">
+    <button class="lightbox-close" id="lightboxClose" aria-label="Đóng">×</button>
+    <div class="lightbox-content">
+      <div class="lightbox-frame" id="lightboxFrame"></div>
+      <div class="lightbox-info">
+        <h3 id="lightboxTitle">—</h3>
+        <p id="lightboxDesc">—</p>
+        <div class="lightbox-meta">
+          <span class="badge-type" id="lightboxType">Tĩnh</span>
+          <span class="price-pill"><span class="heart-icon">♥</span> <strong id="lightboxPrice">0</strong></span>
+        </div>
+        <button class="btn btn-primary" id="lightboxBuy">Mua bằng tim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
   <!-- Portfolio -->
   <section id="work" class="section">
