@@ -9,6 +9,7 @@ import {
   PanelLeft, PanelRight, Download, Store
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { detectLayerRole } from '../utils/layerNaming'
 import { useAuthStore } from '../store/useAuthStore'
 import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
@@ -105,6 +106,27 @@ function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
         />
       )}
       <span className="truncate flex-1 text-xs">{layer.name}</span>
+      {(() => {
+        const role = detectLayerRole(layer.name)
+        if (!role) return null
+        return (
+          <span
+            className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{
+              background: role.type === 'text' ? 'rgba(110,75,255,0.25)' : 'rgba(77,208,255,0.2)',
+              border: role.type === 'text' ? '1px solid rgba(110,75,255,0.4)' : '1px solid rgba(77,208,255,0.35)',
+              color: role.type === 'text' ? 'rgba(167,139,250,1)' : 'rgba(77,208,255,1)',
+              maxWidth: 72,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={role.label}
+          >
+            {role.label}
+          </span>
+        )
+      })()}
     </motion.div>
   )
 }
@@ -957,6 +979,28 @@ export default function PsdEditorPage() {
     if (!stageRef.current || !psdMeta) return
     const previewDataUrl = stageRef.current.toDataURL({ pixelRatio: 1 })
     const ratio = detectRatio(psdMeta.width, psdMeta.height)
+    // Extract editable fields from named layers
+    const editableFields = layers
+      .filter(l => detectLayerRole(l.name))
+      .map(l => {
+        const role = detectLayerRole(l.name)
+        return {
+          role: role.role,
+          label: role.label,
+          type: role.type,
+          shape: role.shape || 'rect',
+          defaultValue: l.type === 'text' ? (l.textContent || '') : null,
+          x: l.left,
+          y: l.top,
+          width: l.width,
+          height: l.height,
+          fontSize: l.fontSize || 16,
+          fontFamily: l.fontFamily || 'Inter',
+          color: l.color || '#ffffff',
+          bold: l.bold || false,
+          italic: l.italic || false,
+        }
+      })
     addProduct({
       ...publishForm,
       previewDataUrl,
@@ -966,6 +1010,7 @@ export default function PsdEditorPage() {
       psdFileName: psdFile?.name || '',
       sold: 0,
       createdAt: new Date().toISOString(),
+      editableFields,
     })
     toast('Đã đăng sản phẩm lên cửa hàng!', 'success', 'Publish')
     setShowPublishModal(false)
