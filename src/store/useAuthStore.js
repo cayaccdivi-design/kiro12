@@ -68,9 +68,11 @@ export const useAuthStore = create((set, get) => ({
   isAdmin: () => get().user?.email === 'finnlive246@gmail.com',
 
   addBalance: (amount) => {
-    const user = get().users
     const current = get().user
     if (!current) return
+    // Admin has infinite balance — don't mutate stored record
+    if (current.email === 'finnlive246@gmail.com') return
+    const user = get().users
     const updated = user.map(u =>
       u.id === current.id ? { ...u, balance: u.balance + amount } : u
     )

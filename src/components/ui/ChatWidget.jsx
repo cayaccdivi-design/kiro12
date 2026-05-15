@@ -10,7 +10,7 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [sysInput, setSysInput] = useState('')
   const [showSysInput, setShowSysInput] = useState(false)
-  const isAdmin = user?.email === 'finnlive246@gmail.com'
+  const isAdmin = useAuthStore(s => s.isAdmin())
   const messagesEndRef = useRef(null)
 
   useEffect(() => {

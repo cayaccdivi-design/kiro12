@@ -39,7 +39,7 @@ export default function CollagePage() {
   const [dragging, setDragging] = useState(false)
   const canvasRef = useRef(null)
 
-  const renderCanvas = useCallback(() => {
+  const renderCanvas = useCallback(async () => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -51,7 +51,21 @@ export default function CollagePage() {
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, canvasW, canvasH)
 
-    const loadAndDraw = layout.slots.map((slot, i) => {
+    // Step 1: load all images in parallel, collect results indexed by slot
+    const loadedImages = await Promise.all(
+      layout.slots.map((slot, i) => {
+        if (!images[i]) return Promise.resolve(null)
+        return new Promise((resolve) => {
+          const img = new window.Image()
+          img.onload = () => resolve(img)
+          img.onerror = () => resolve(null)
+          img.src = images[i].dataUrl
+        })
+      })
+    )
+
+    // Step 2: draw all slots in index order (no racing)
+    layout.slots.forEach((slot, i) => {
       const slotX = slot.x * (canvasW / layout.cols)
       const slotY = slot.y * (canvasH / layout.rows)
       const slotW = slot.w * (canvasW / layout.cols)
@@ -60,27 +74,12 @@ export default function CollagePage() {
       const innerY = slotY + gap / 2
       const innerW = slotW - gap
       const innerH = slotH - gap
-
-      if (images[i]) {
-        return new Promise((resolve) => {
-          const img = new window.Image()
-          img.onload = () => {
-            drawCover(ctx, img, innerX, innerY, innerW, innerH, radius)
-            resolve()
-          }
-          img.onerror = () => {
-            drawPlaceholder(ctx, innerX, innerY, innerW, innerH, radius, i)
-            resolve()
-          }
-          img.src = images[i].dataUrl
-        })
+      if (loadedImages[i]) {
+        drawCover(ctx, loadedImages[i], innerX, innerY, innerW, innerH, radius)
       } else {
         drawPlaceholder(ctx, innerX, innerY, innerW, innerH, radius, i)
-        return Promise.resolve()
       }
     })
-
-    Promise.all(loadAndDraw)
   }, [images, layout, gap, radius, bgColor])
 
   function drawPlaceholder(ctx, x, y, w, h, r, i) {

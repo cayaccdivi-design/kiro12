@@ -29,7 +29,7 @@ export default function App() {
         <Route path="/remove-bg" element={<RemoveBgPage />} />
         <Route path="/psd-editor" element={<ProtectedRoute><PsdEditorPage /></ProtectedRoute>} />
         <Route path="/resources" element={<ResourcesPage />} />
-        <Route path="/collage" element={<CollagePage />} />
+        <Route path="/collage" element={<ProtectedRoute><CollagePage /></ProtectedRoute>} />
         <Route path="/topup" element={
           <ProtectedRoute><TopupPage /></ProtectedRoute>
         } />

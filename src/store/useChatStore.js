@@ -24,7 +24,7 @@ export const useChatStore = create((set, get) => ({
     }
     const updated = [...get().messages, msg].slice(-200)
     try { localStorage.setItem(CHAT_KEY, JSON.stringify(updated)) } catch {}
-    set(s => ({ messages: updated, unread: s.isOpen ? 0 : s.unread + (msg.isAdmin ? 0 : 1) }))
+    set(s => ({ messages: updated, unread: s.isOpen ? 0 : s.unread + 1 }))
   },
 
   deleteMessage: (id) => {
