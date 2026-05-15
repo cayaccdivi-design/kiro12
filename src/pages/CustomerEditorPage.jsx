@@ -5,6 +5,7 @@ import { Stage, Layer, Image as KonvaImage, Text as KonvaText } from 'react-konv
 import { Download, ArrowLeft, Type, Image as ImageIcon, Upload, User, Star, AlertCircle } from 'lucide-react'
 import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
+import { useAuthStore } from '../store/useAuthStore'
 
 // ── useKonvaImage hook ─────────────────────────────────────────────────────────
 function useKonvaImage(dataUrl) {
@@ -283,6 +284,11 @@ export default function CustomerEditorPage() {
   const navigate = useNavigate()
   const product = useShopStore(s => s.getProduct(productId))
   const { isOwned, toast } = useAppStore()
+  const { user, deductBalance } = useAuthStore()
+  const isAdmin = useAuthStore(s => s.isAdmin())
+  const [hasPaid, setHasPaid] = useState(false)
+  const [showPayModal, setShowPayModal] = useState(false)
+  const EXPORT_COST = 30
 
   const containerRef = useRef(null)
   const stageRef = useRef(null)
@@ -342,6 +348,12 @@ export default function CustomerEditorPage() {
   }, [])
 
   const handleDownload = useCallback(() => {
+    // Payment gate — admin always free, regular users must pay
+    if (!isAdmin && !hasPaid) {
+      setShowPayModal(true)
+      return
+    }
+
     const filename = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}`
 
     const downloadDataUrl = (dataUrl, ext = 'png') => {
@@ -383,7 +395,7 @@ export default function CustomerEditorPage() {
     } catch (err) {
       downloadOriginal()
     }
-  }, [product, customValues, toast])
+  }, [product, customValues, toast, isAdmin, hasPaid])
 
   if (!product) return <NotFoundView onBack={() => navigate('/shop')} />
   if (!isOwned(productId)) return <NotOwnedView onBuy={() => navigate('/shop')} />
@@ -423,7 +435,7 @@ export default function CustomerEditorPage() {
           onClick={handleDownload}
           className="btn-primary flex items-center gap-1.5 px-4 py-2 text-sm"
         >
-          <Download size={14} /> Tai ve
+          <Download size={14} /> {isAdmin || hasPaid ? 'Tải về' : `Tải về (${EXPORT_COST} ⭐)`}
         </button>
       </motion.div>
 
@@ -578,6 +590,91 @@ export default function CustomerEditorPage() {
           )}
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setShowPayModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+            style={{ background: 'rgba(14,14,24,0.98)', border: '1px solid rgba(110,75,255,0.3)', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}>
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+                style={{ background: 'rgba(110,75,255,0.15)', border: '1px solid rgba(110,75,255,0.3)' }}>
+                <Download size={24} className="text-brand-400" />
+              </div>
+              <h3 className="font-display text-lg font-bold text-white mb-1">Tải xuống có phí</h3>
+              <p className="text-sm text-white/50">Trả {EXPORT_COST} coins để tải ảnh không watermark</p>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-xl"
+              style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.2)' }}>
+              <span className="text-sm text-white/60">Chi phí tải xuống</span>
+              <div className="flex items-center gap-1.5 font-bold text-yellow-400">
+                <Star size={14} className="fill-yellow-400" /> {EXPORT_COST} coins
+              </div>
+            </div>
+            {user && (
+              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg text-xs"
+                style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <span className="text-white/35">Số dư của bạn</span>
+                <span className={user.balance >= EXPORT_COST ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                  {user?.balance?.toLocaleString('vi-VN') ?? 0} coins
+                </span>
+              </div>
+            )}
+            {!user && (
+              <p className="text-xs text-center text-white/40">Vui lòng đăng nhập để thanh toán</p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowPayModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm text-white/50 transition-all"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                Hủy
+              </button>
+              <button
+                disabled={!user || (user?.balance ?? 0) < EXPORT_COST}
+                onClick={() => {
+                  if (!user || user.balance < EXPORT_COST) return
+                  const ok = deductBalance(EXPORT_COST)
+                  if (!ok) { toast('Số dư không đủ!', 'error', 'Lỗi'); return }
+                  setHasPaid(true)
+                  setShowPayModal(false)
+                  toast('Thanh toán thành công! Đang tải...', 'success', 'OK')
+                  setTimeout(() => {
+                    const fn = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}`
+                    const dl = (dataUrl) => {
+                      const a = document.createElement('a')
+                      a.href = dataUrl
+                      a.download = `${fn}.png`
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                    }
+                    if (stageRef.current) {
+                      try {
+                        dl(stageRef.current.toDataURL({ mimeType: 'image/png', pixelRatio: 2 }))
+                      } catch {
+                        const src = (product?.images?.length > 0 ? product.images[0] : null) || product?.previewDataUrl
+                        if (src) dl(src)
+                      }
+                    } else {
+                      const src = (product?.images?.length > 0 ? product.images[0] : null) || product?.previewDataUrl
+                      if (src) dl(src)
+                    }
+                    toast('Đã tải về!', 'success', 'Download')
+                  }, 300)
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', color: '#fff' }}>
+                Trả {EXPORT_COST} coins
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }
