@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -74,7 +75,7 @@ function StatCard({ icon: Icon, label, value, change, trend, link, accent }) {
 function QuickCard({ to, icon: Icon, label, desc, gradient, badge }) {
   return (
     <Link to={to}
-      className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-3 group transition-all duration-300 hover:-translate-y-1"
+      className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-3 group transition-all duration-300 hover:-translate-y-1 h-full"
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -183,6 +184,39 @@ export default function Dashboard() {
   const isAdmin = useAuthStore(s => s.isAdmin())
   const { owned } = useAppStore()
 
+  // Reviews state — load từ localStorage
+  const [userReviews, setUserReviews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('nova_reviews_v1')) || [] } catch { return [] }
+  })
+  const [showReviewForm, setShowReviewForm] = useState(false)
+  const [reviewForm, setReviewForm] = useState({ rating: 5, text: '', product: 'Chung' })
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+
+  const submitReview = () => {
+    if (!user) return
+    if (!reviewForm.text.trim()) return
+    setReviewSubmitting(true)
+    const newReview = {
+      id: Date.now().toString(),
+      name: user.name,
+      avatar: user.name.charAt(0).toUpperCase(),
+      color: ['#6e4bff','#0ea5e9','#10b981','#f59e0b','#ec4899'][Math.floor(Math.random()*5)],
+      rating: reviewForm.rating,
+      text: reviewForm.text.trim(),
+      time: 'Vừa xong',
+      product: reviewForm.product,
+      userId: user.id,
+    }
+    const updated = [newReview, ...userReviews].slice(0, 20)
+    try { localStorage.setItem('nova_reviews_v1', JSON.stringify(updated)) } catch {}
+    setUserReviews(updated)
+    setReviewForm({ rating: 5, text: '', product: 'Chung' })
+    setShowReviewForm(false)
+    setReviewSubmitting(false)
+  }
+
+  const allReviews = [...userReviews, ...REVIEWS].slice(0, 8)
+
   // Build activity feed từ dữ liệu thực
   const activities = []
   if (user) {
@@ -288,10 +322,11 @@ export default function Dashboard() {
             </div>
             <h2 className="font-display text-base font-semibold text-white">Truy cập nhanh</h2>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 items-stretch">
             {QUICK_ACTIONS.map(({ to, icon, label, desc, gradient, badge, adminOnly }, i) => (
               (!adminOnly || isAdmin) && (
                 <motion.div key={to}
+                  className="h-full"
                   initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.07 + 0.15, ease: [0.34, 1.56, 0.64, 1] }}>
                   <QuickCard to={to} icon={icon} label={label} desc={desc} gradient={gradient} badge={badge} />
@@ -386,14 +421,88 @@ export default function Dashboard() {
 
       {/* ── Reviews ── */}
       <div>
-        <div className="flex items-center gap-2 mb-5">
-          <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
-            <MessageSquare size={13} className="text-rose-400" />
+        <div className="flex items-center justify-between gap-2 mb-5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
+              <MessageSquare size={13} className="text-rose-400" />
+            </div>
+            <h2 className="font-display text-base font-semibold text-white">Đánh giá từ cộng đồng</h2>
           </div>
-          <h2 className="font-display text-base font-semibold text-white">Đánh giá từ cộng đồng</h2>
+          {user && (
+            <button
+              onClick={() => setShowReviewForm(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={{
+                background: showReviewForm ? 'rgba(239,68,68,0.12)' : 'rgba(110,75,255,0.12)',
+                border: showReviewForm ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(110,75,255,0.3)',
+                color: showReviewForm ? 'rgba(252,165,165,1)' : 'rgba(167,139,250,1)',
+              }}>
+              <MessageSquare size={12} />
+              {showReviewForm ? 'Hủy' : 'Viết đánh giá'}
+            </button>
+          )}
         </div>
+
+        {showReviewForm && user && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
+            className="mb-5 p-4 rounded-2xl"
+            style={{ background: 'rgba(110,75,255,0.08)', border: '1px solid rgba(110,75,255,0.2)', backdropFilter: 'blur(16px)' }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                style={{ background: 'rgba(110,75,255,0.25)', color: 'rgba(167,139,250,1)' }}>
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-white">{user.name}</p>
+                <p className="text-[10px] text-white/40">Viết đánh giá của bạn</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 mb-3">
+              {[1,2,3,4,5].map(n => (
+                <button key={n} onClick={() => setReviewForm(f => ({ ...f, rating: n }))}>
+                  <Star size={18} className={n <= reviewForm.rating ? 'text-yellow-400 fill-yellow-400' : 'text-white/20'} />
+                </button>
+              ))}
+              <span className="text-xs text-white/40 ml-2">{reviewForm.rating}/5</span>
+            </div>
+            <select
+              value={reviewForm.product}
+              onChange={e => setReviewForm(f => ({ ...f, product: e.target.value }))}
+              className="w-full mb-3 px-3 py-2 rounded-xl text-xs text-white/70 outline-none"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              {['Chung', 'Cửa hàng', 'PSD Editor', 'Ghép ảnh', 'Xóa nền AI', 'Tài nguyên', 'Hộp quà'].map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <textarea
+              value={reviewForm.text}
+              onChange={e => setReviewForm(f => ({ ...f, text: e.target.value }))}
+              placeholder="Chia sẻ trải nghiệm của bạn với cộng đồng..."
+              rows={3}
+              className="w-full mb-3 px-3 py-2 rounded-xl text-xs text-white/80 outline-none resize-none"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setShowReviewForm(false)}
+                className="flex-1 py-2 rounded-xl text-xs text-white/50 transition-all"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                Hủy
+              </button>
+              <button onClick={submitReview}
+                disabled={!reviewForm.text.trim() || reviewSubmitting}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', color: '#fff' }}>
+                {reviewSubmitting ? 'Đang gửi...' : 'Gửi đánh giá'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {REVIEWS.map((r, i) => (
+          {allReviews.map((r, i) => (
             <motion.div
               key={r.id}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}

@@ -268,24 +268,48 @@ export default function CustomerEditorPage() {
   }, [])
 
   const handleDownload = useCallback(() => {
-    if (!stageRef.current) {
-      toast('Canvas chua san sang', 'error', 'Loi')
-      return
-    }
-    try {
-      const dataUrl = stageRef.current.toDataURL({ mimeType: 'image/png', pixelRatio: 2 })
+    const filename = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}`
+
+    const downloadDataUrl = (dataUrl, ext = 'png') => {
       const a = document.createElement('a')
       a.href = dataUrl
-      a.download = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}.png`
+      a.download = `${filename}.${ext}`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      toast('Da tai ve thanh cong!', 'success', 'Download')
-    } catch (err) {
-      const detail = err?.name === 'SecurityError' ? 'Canvas bị taint do ảnh từ domain khác. Thử lại sau.' : 'Vui lòng thử lại.'
-      toast(detail, 'error', 'Download lỗi')
     }
-  }, [product, toast])
+
+    const downloadOriginal = () => {
+      const srcUrl = (product?.images?.length > 0 ? product.images[0] : null) || product?.previewDataUrl
+      if (srcUrl) {
+        downloadDataUrl(srcUrl, 'png')
+        toast('Đã tải ảnh gốc thành công!', 'success', 'Download')
+      } else {
+        toast('Không có ảnh để tải', 'error', 'Lỗi')
+      }
+    }
+
+    const hasCustomFields = (product?.editableFields?.length ?? 0) > 0
+    const hasCustomValues = Object.values(customValues).some(v => v && v !== '')
+
+    if (!hasCustomFields || !hasCustomValues) {
+      downloadOriginal()
+      return
+    }
+
+    if (!stageRef.current) {
+      downloadOriginal()
+      return
+    }
+
+    try {
+      const dataUrl = stageRef.current.toDataURL({ mimeType: 'image/png', pixelRatio: 2 })
+      downloadDataUrl(dataUrl, 'png')
+      toast('Đã tải về thành công!', 'success', 'Download')
+    } catch (err) {
+      downloadOriginal()
+    }
+  }, [product, customValues, toast])
 
   if (!product) return <NotFoundView onBack={() => navigate('/shop')} />
   if (!isOwned(productId)) return <NotOwnedView onBuy={() => navigate('/shop')} />
