@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingBag, Search, Star, Coins, CheckCircle, Eye, Zap, Lock, Sparkles, Edit2, Trash2 } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
@@ -53,18 +53,20 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
   })
 
   // Sync form when product changes
-  if (product && form.title === '' && product.title) {
-    setForm({
-      title: product.title || '',
-      desc: product.desc || '',
-      category: product.category || 'thumbnail',
-      tag: product.tag || '',
-      price: product.price || 0,
-      badge: product.badge || '',
-      discountCode: product.discountCode || '',
-      discountPercent: product.discountPercent || 0,
-    })
-  }
+  useEffect(() => {
+    if (product) {
+      setForm({
+        title: product.title || '',
+        desc: product.desc || '',
+        category: product.category || 'thumbnail',
+        tag: product.tag || '',
+        price: product.price || 0,
+        badge: product.badge || '',
+        discountCode: product.discountCode || '',
+        discountPercent: product.discountPercent || 0,
+      })
+    }
+  }, [product?.id])
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
@@ -336,7 +338,7 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
   const owned = product ? isOwned(product.id) : false
   const [inputCode, setInputCode] = useState('')
 
-  const appliedDiscount = !!(inputCode && product?.discountCode && inputCode === product.discountCode && product?.discountPercent > 0)
+  const appliedDiscount = !!(inputCode && product?.discountCode && inputCode.toUpperCase() === product.discountCode.toUpperCase() && product?.discountPercent > 0)
   const finalPrice = appliedDiscount ? Math.round(product.price * (1 - product.discountPercent / 100)) : (product?.price ?? 0)
 
   const buy = () => {
