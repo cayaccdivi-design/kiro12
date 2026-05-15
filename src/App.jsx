@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import ShopPage from './pages/ShopPage'
 import GiftPage from './pages/GiftPage'
 import RemoveBgPage from './pages/RemoveBgPage'
+import PsdEditorPage from './pages/PsdEditorPage'
 import ResourcesPage from './pages/ResourcesPage'
 import TopupPage from './pages/TopupPage'
 import { useAuthStore } from './store/useAuthStore'
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/shop" element={<ShopPage />} />
         <Route path="/gift" element={<GiftPage />} />
         <Route path="/remove-bg" element={<RemoveBgPage />} />
+        <Route path="/psd-editor" element={<PsdEditorPage />} />
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/topup" element={
           <ProtectedRoute><TopupPage /></ProtectedRoute>

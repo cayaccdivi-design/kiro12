@@ -1,0 +1,927 @@
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Transformer } from 'react-konva'
+import Psd from '@webtoon/psd'
+import {
+  Upload, Eye, EyeOff, Type, Image as ImageIcon, Layers,
+  ZoomIn, ZoomOut, Maximize2, Lock, Star, ChevronLeft,
+  ChevronRight, RotateCcw, Bold, Italic, X, Loader,
+  PanelLeft, PanelRight
+} from 'lucide-react'
+import { useAuthStore } from '../store/useAuthStore'
+import { useAppStore } from '../store/useAppStore'
+import clsx from 'clsx'
+
+// ── helpers ────────────────────────────────────────────────────────────────────
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+async function rgbaToDataUrl(rgba, width, height) {
+  if (!width || !height) return null
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  const imgData = ctx.createImageData(width, height)
+  imgData.data.set(rgba)
+  ctx.putImageData(imgData, 0, 0)
+  return canvas.toDataURL()
+}
+
+function useKonvaImage(dataUrl) {
+  const [img, setImg] = useState(null)
+  useEffect(() => {
+    if (!dataUrl) { setImg(null); return }
+    const image = new window.Image()
+    image.src = dataUrl
+    image.onload = () => setImg(image)
+  }, [dataUrl])
+  return img
+}
+
+// ── sub-components ─────────────────────────────────────────────────────────────
+
+function Spinner({ label }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-8">
+      <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+        style={{ background: 'rgba(110,75,255,0.15)' }}>
+        <Loader size={22} className="text-brand-400 animate-spin" />
+      </div>
+      {label && <p className="text-sm text-white/50">{label}</p>}
+    </div>
+  )
+}
+
+function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
+  const TypeIcon = layer.type === 'text' ? Type : layer.type === 'group' ? Layers : ImageIcon
+  return (
+    <motion.div
+      layout
+      onClick={() => onSelect(layer.id)}
+      className={clsx(
+        'flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-colors text-sm select-none',
+        selected
+          ? 'bg-brand-500/20 border border-brand-500/30 text-white'
+          : 'text-white/60 hover:bg-white/[0.04] border border-transparent hover:text-white/80'
+      )}
+    >
+      <button
+        onClick={e => { e.stopPropagation(); onToggleVisible(layer.id) }}
+        className="flex-shrink-0 text-white/30 hover:text-white/70 transition-colors"
+      >
+        {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+      </button>
+      <TypeIcon size={13} className={clsx('flex-shrink-0', selected ? 'text-brand-300' : 'text-white/40')} />
+      {layer.type === 'image' && layer.dataUrl && (
+        <img
+          src={layer.dataUrl}
+          alt=""
+          className="w-8 h-8 object-cover rounded flex-shrink-0"
+          style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+        />
+      )}
+      <span className="truncate flex-1 text-xs">{layer.name}</span>
+    </motion.div>
+  )
+}
+
+function LeftPanel({ show, onClose, layers, selectedId, onSelect, onToggleVisible, isMobile }) {  const panelContent = (
+    <div className="w-64 flex-shrink-0 flex flex-col overflow-hidden h-full"
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        borderRight: '1px solid rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(16px)',
+      }}
+    >
+      <div className="px-3 py-3 border-b flex items-center justify-between"
+        style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">Layers</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-white/25">{layers.length}</span>
+          {isMobile && (
+            <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        {[...layers].reverse().map(layer => (
+          <LayerRow
+            key={layer.id}
+            layer={layer}
+            selected={layer.id === selectedId}
+            onSelect={onSelect}
+            onToggleVisible={onToggleVisible}
+          />
+        ))}
+      </div>
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {show && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="absolute inset-0 z-20 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              key="left-panel-mobile"
+              initial={{ x: -280, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -280, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+              className="absolute left-0 top-0 bottom-0 z-30"
+            >
+              {panelContent}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          key="left-panel"
+          initial={{ x: -280, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: -280, opacity: 0 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+          className="flex-shrink-0"
+        >
+          {panelContent}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// ── Right Panel ────────────────────────────────────────────────────────────────
+
+const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Courier', 'Verdana', 'Impact']
+
+function TextControls({ layer, onChange, onReset }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Content</label>
+        <textarea
+          value={layer.textContent || ''}
+          onChange={e => onChange({ textContent: e.target.value })}
+          rows={3}
+          className="input-glass resize-none text-xs"
+          style={{ minHeight: 72 }}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Font</label>
+          <select
+            value={layer.fontFamily || 'Inter'}
+            onChange={e => onChange({ fontFamily: e.target.value })}
+            className="input-glass text-xs py-2"
+          >
+            {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Size</label>
+          <input
+            type="number"
+            value={layer.fontSize || 16}
+            onChange={e => onChange({ fontSize: Number(e.target.value) })}
+            className="input-glass text-xs py-2"
+            min={6}
+            max={300}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Color</label>
+          <input
+            type="color"
+            value={layer.color || '#ffffff'}
+            onChange={e => onChange({ color: e.target.value })}
+            className="w-full h-9 rounded-xl cursor-pointer"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1.5 block">Style</label>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => onChange({ bold: !layer.bold })}
+              className={clsx('w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition-all',
+                layer.bold ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+            >B</button>
+            <button
+              onClick={() => onChange({ italic: !layer.italic })}
+              className={clsx('w-9 h-9 rounded-xl flex items-center justify-center text-sm italic transition-all',
+                layer.italic ? 'bg-brand-500/30 text-brand-300 border border-brand-500/40' : 'btn-ghost')}
+            >I</button>
+          </div>
+        </div>
+      </div>
+      <button onClick={onReset} className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2">
+        <RotateCcw size={12} /> Reset to original
+      </button>
+    </div>
+  )
+}
+
+function ImageControls({ layer, onChange, onReset }) {
+  const fileRef = useRef(null)
+  const handleReplace = (e) => {
+    const f = e.target.files[0]
+    if (!f) return
+    const reader = new FileReader()
+    reader.onload = (ev) => onChange({ dataUrl: ev.target.result })
+    reader.readAsDataURL(f)
+  }
+  return (
+    <div className="space-y-4">
+      {layer.dataUrl && (
+        <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <img src={layer.dataUrl} alt={layer.name} className="w-full object-contain max-h-40" />
+        </div>
+      )}
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2.5"
+      >
+        <ImageIcon size={13} /> Replace Image
+        <input ref={fileRef} type="file" accept=".png,.jpg,.jpeg" className="hidden" onChange={handleReplace} />
+      </button>
+      <button onClick={onReset} className="btn-ghost w-full flex items-center justify-center gap-2 text-xs py-2">
+        <RotateCcw size={12} /> Reset to original
+      </button>
+    </div>
+  )
+}
+
+function RightPanel({ show, onClose, selectedLayer, onLayerChange, onResetLayer, isMobile }) {
+  const panelContent = (
+    <div className="w-72 flex-shrink-0 flex flex-col overflow-hidden h-full"
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        borderLeft: '1px solid rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(16px)',
+      }}
+    >
+      <div className="px-3 py-3 border-b flex items-center justify-between"
+        style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">Properties</span>
+        {isMobile && (
+          <button onClick={onClose} className="text-white/30 hover:text-white transition-colors">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto p-3">
+        {!selectedLayer ? (
+          <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+            <div className="w-12 h-12 rounded-2xl mb-3 flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <PanelRight size={18} className="text-white/20" />
+            </div>
+            <p className="text-xs text-white/30">Select a layer to edit properties</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              {selectedLayer.type === 'text'
+                ? <Type size={14} className="text-brand-300" />
+                : <ImageIcon size={14} className="text-cyan-400" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-white truncate">{selectedLayer.name}</p>
+                <p className="text-[10px] text-white/30 capitalize">{selectedLayer.type} layer</p>
+              </div>
+              <span className={clsx('text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase',
+                selectedLayer.type === 'text'
+                  ? 'bg-brand-500/20 text-brand-300 border border-brand-500/30'
+                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30')}>
+                {selectedLayer.type}
+              </span>
+            </div>
+            {selectedLayer.type === 'text' && (
+              <TextControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
+            )}
+            {selectedLayer.type === 'image' && (
+              <ImageControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
+            )}
+            {selectedLayer.type === 'group' && (
+              <p className="text-xs text-white/30 text-center py-4">Group layer - visibility only</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {show && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="absolute inset-0 z-20 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              key="right-panel-mobile"
+              initial={{ x: 300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 300, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+              className="absolute right-0 top-0 bottom-0 z-30"
+            >
+              {panelContent}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          key="right-panel"
+          initial={{ x: 280, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 280, opacity: 0 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+          className="flex-shrink-0"
+        >
+          {panelContent}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// ── Konva layer components ──────────────────────────────────────────────────────
+
+function KonvaLayerImage({ layer, isSelected, onSelect, onDragEnd, onTransformEnd, transformerRef }) {
+  const img = useKonvaImage(layer.dataUrl)
+  const nodeRef = useRef(null)
+
+  useEffect(() => {
+    if (!transformerRef?.current) return
+    if (isSelected && nodeRef.current) {
+      transformerRef.current.nodes([nodeRef.current])
+      transformerRef.current.getLayer()?.batchDraw()
+    } else if (transformerRef.current.nodes().includes(nodeRef.current)) {
+      transformerRef.current.nodes([])
+      transformerRef.current.getLayer()?.batchDraw()
+    }
+  }, [isSelected, transformerRef])
+
+  if (!img) return null
+  return (
+    <KonvaImage
+      ref={nodeRef}
+      image={img}
+      x={layer.left}
+      y={layer.top}
+      width={layer.width}
+      height={layer.height}
+      onClick={() => onSelect(layer.id)}
+      onTap={() => onSelect(layer.id)}
+      draggable
+      onDragEnd={e => onDragEnd(layer.id, e.target.x(), e.target.y())}
+      onTransformEnd={e => onTransformEnd(layer.id, e)}
+    />
+  )
+}
+
+function KonvaLayerText({ layer, isSelected, onSelect, onDragEnd, onTransformEnd, transformerRef }) {
+  const nodeRef = useRef(null)
+
+  useEffect(() => {
+    if (!transformerRef?.current) return
+    if (isSelected && nodeRef.current) {
+      transformerRef.current.nodes([nodeRef.current])
+      transformerRef.current.getLayer()?.batchDraw()
+    } else if (transformerRef.current.nodes().includes(nodeRef.current)) {
+      transformerRef.current.nodes([])
+      transformerRef.current.getLayer()?.batchDraw()
+    }
+  }, [isSelected, transformerRef])
+
+  const fontStyle = [layer.bold ? 'bold' : '', layer.italic ? 'italic' : ''].filter(Boolean).join(' ') || 'normal'
+
+  return (
+    <KonvaText
+      ref={nodeRef}
+      text={layer.textContent || ''}
+      x={layer.left}
+      y={layer.top}
+      fontFamily={layer.fontFamily || 'Inter'}
+      fontSize={layer.fontSize || 16}
+      fill={layer.color || '#ffffff'}
+      fontStyle={fontStyle}
+      onClick={() => onSelect(layer.id)}
+      onTap={() => onSelect(layer.id)}
+      draggable
+      onDragEnd={e => onDragEnd(layer.id, e.target.x(), e.target.y())}
+      onTransformEnd={e => onTransformEnd(layer.id, e)}
+    />
+  )
+}
+
+// ── Toolbar ─────────────────────────────────────────────────────────────────────
+
+function Toolbar({
+  psdFile, psdMeta, zoom, onZoomIn, onZoomOut, onZoomFit,
+  showLeft, showRight, onToggleLeft, onToggleRight,
+  userBalance, onExportClick, isLg
+}) {
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 flex-shrink-0 flex-wrap"
+      style={{
+        background: 'rgba(255,255,255,0.025)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      {!isLg && (
+        <>
+          <button onClick={onToggleLeft}
+            className={clsx('p-1.5 rounded-lg transition-colors',
+              showLeft ? 'text-brand-300 bg-brand-500/20' : 'text-white/40 hover:text-white hover:bg-white/[0.06]')}>
+            <PanelLeft size={15} />
+          </button>
+          <button onClick={onToggleRight}
+            className={clsx('p-1.5 rounded-lg transition-colors',
+              showRight ? 'text-brand-300 bg-brand-500/20' : 'text-white/40 hover:text-white hover:bg-white/[0.06]')}>
+            <PanelRight size={15} />
+          </button>
+          <div className="w-px h-4 bg-white/10" />
+        </>
+      )}
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(110,75,255,0.2)' }}>
+          <Layers size={12} className="text-brand-300" />
+        </div>
+        <span className="text-xs font-medium text-white/70 truncate max-w-[120px]">
+          {psdFile ? psdFile.name : 'No file'}
+        </span>
+        {psdMeta && (
+          <span className="text-[10px] text-white/30 flex-shrink-0">
+            {psdMeta.width} x {psdMeta.height}px
+          </span>
+        )}
+      </div>
+      <div className="flex-1" />
+      <div className="flex items-center gap-1">
+        <button onClick={onZoomOut} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors">
+          <ZoomOut size={14} />
+        </button>
+        <span className="text-xs text-white/40 min-w-[40px] text-center">{Math.round(zoom * 100)}%</span>
+        <button onClick={onZoomIn} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors">
+          <ZoomIn size={14} />
+        </button>
+        <button onClick={onZoomFit} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors">
+          <Maximize2 size={14} />
+        </button>
+      </div>
+      <div className="w-px h-4 bg-white/10" />
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <Star size={11} className="text-yellow-400" />
+          <span className="text-xs text-white/70 font-medium">{userBalance ?? 0}</span>
+        </div>
+        <button
+          onClick={onExportClick}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+          style={{
+            background: 'rgba(110,75,255,0.15)',
+            border: '1px solid rgba(110,75,255,0.3)',
+            color: 'rgba(167,139,250,1)',
+          }}
+        >
+          <Lock size={12} />
+          Export
+          <span className="text-[10px] opacity-70">50 ⭐</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
+export default function PsdEditorPage() {
+  const { user } = useAuthStore()
+  const { toast } = useAppStore()
+
+  // PSD state
+  const [psdFile, setPsdFile] = useState(null)
+  const [psdMeta, setPsdMeta] = useState(null) // { width, height }
+  const [layers, setLayers] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
+  const [dragging, setDragging] = useState(false)
+
+  // Editor state
+  const [selectedLayerId, setSelectedLayerId] = useState(null)
+  const [zoom, setZoom] = useState(1)
+  const [fitZoom, setFitZoom] = useState(1)
+
+  // Panel visibility
+  const [isLg, setIsLg] = useState(window.innerWidth >= 1024)
+  const [showLeft, setShowLeft] = useState(true)
+  const [showRight, setShowRight] = useState(true)
+
+  // Refs
+  const containerRef = useRef(null)
+  const stageRef = useRef(null)
+  const transformerRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  // Responsive detection
+  useEffect(() => {
+    const onResize = () => {
+      const lg = window.innerWidth >= 1024
+      setIsLg(lg)
+      if (!lg) { setShowLeft(false); setShowRight(false) }
+      else { setShowLeft(true); setShowRight(true) }
+    }
+    window.addEventListener('resize', onResize)
+    onResize()
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Compute fit zoom when container or PSD size changes
+  useEffect(() => {
+    if (!containerRef.current || !psdMeta) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const scaleX = (rect.width - 40) / psdMeta.width
+    const scaleY = (rect.height - 40) / psdMeta.height
+    const newFit = Math.min(scaleX, scaleY, 1)
+    setFitZoom(newFit)
+    setZoom(newFit)
+  }, [psdMeta, showLeft, showRight])
+
+  // ── PSD parsing ──────────────────────────────────────────────────────────────
+
+  const parsePsd = useCallback(async (file) => {
+    if (!file) return
+    if (file.size > 50 * 1024 * 1024) {
+      toast('File too large. Maximum 50MB.', 'error', 'Error')
+      return
+    }
+    setPsdFile(file)
+    setLoading(true)
+    setLoadingMsg('Reading file...')
+    setLayers([])
+    setPsdMeta(null)
+    setSelectedLayerId(null)
+
+    try {
+      const arrayBuffer = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = e => resolve(e.target.result)
+        reader.onerror = reject
+        reader.readAsArrayBuffer(file)
+      })
+
+      setLoadingMsg('Parsing PSD...')
+      const psd = Psd.parse(arrayBuffer)
+      setPsdMeta({ width: psd.width, height: psd.height })
+
+      // Collect leaf layers
+      const allLayers = []
+      function collectLayers(nodes) {
+        for (const node of nodes) {
+          if (node.children && node.children.length > 0) {
+            collectLayers(node.children)
+          } else {
+            allLayers.push(node)
+          }
+        }
+      }
+      collectLayers(psd.children || [])
+
+      const total = allLayers.length
+      const result = []
+
+      for (let i = 0; i < allLayers.length; i++) {
+        const node = allLayers[i]
+        if (!node.width || !node.height) continue
+
+        setLoadingMsg(`Processing layer ${i + 1}/${total}: ${node.name || 'Unnamed'}`)
+
+        const isText = node.text != null
+        let dataUrl = null
+        let originalDataUrl = null
+
+        if (!isText) {
+          try {
+            const composite = await node.composite()
+            const rgba = composite instanceof Promise ? await composite : composite
+            dataUrl = await rgbaToDataUrl(rgba, node.width, node.height)
+            originalDataUrl = dataUrl
+          } catch {
+            // skip composite errors
+          }
+        }
+
+        const entry = {
+          id: uid(),
+          name: node.name || `Layer ${i + 1}`,
+          type: isText ? 'text' : 'image',
+          visible: !node.isHidden,
+          left: node.left || 0,
+          top: node.top || 0,
+          width: node.width,
+          height: node.height,
+          // text props
+          textContent: isText ? (node.text?.content || '') : undefined,
+          originalTextContent: isText ? (node.text?.content || '') : undefined,
+          fontFamily: isText ? (node.text?.font?.names?.[0] || 'Inter') : undefined,
+          fontSize: isText ? (node.text?.font?.sizes?.[0] || 16) : undefined,
+          color: '#ffffff',
+          bold: false,
+          italic: false,
+          // image props
+          dataUrl: !isText ? dataUrl : undefined,
+          originalDataUrl: !isText ? originalDataUrl : undefined,
+        }
+        result.push(entry)
+      }
+
+      setLayers(result)
+      setLoadingMsg('')
+      toast(`Loaded ${result.length} layers`, 'success', psd.width + ' x ' + psd.height)
+    } catch (err) {
+      console.error(err)
+      toast('Failed to parse PSD file', 'error', 'Error')
+      setPsdFile(null)
+    } finally {
+      setLoading(false)
+      setLoadingMsg('')
+    }
+  }, [toast])
+
+  const handleFile = useCallback((f) => {
+    if (!f) return
+    if (!f.name.toLowerCase().endsWith('.psd')) {
+      toast('Only .psd files are supported', 'error', 'Invalid file')
+      return
+    }
+    parsePsd(f)
+  }, [parsePsd, toast])
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault()
+    setDragging(false)
+    const f = e.dataTransfer.files[0]
+    if (f) handleFile(f)
+  }, [handleFile])
+
+  // ── Layer operations ─────────────────────────────────────────────────────────
+
+  const toggleLayerVisible = useCallback((id) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l))
+  }, [])
+
+  const selectLayer = useCallback((id) => {
+    setSelectedLayerId(prev => prev === id ? null : id)
+  }, [])
+
+  const updateLayer = useCallback((changes) => {
+    setLayers(prev => prev.map(l => l.id === selectedLayerId ? { ...l, ...changes } : l))
+  }, [selectedLayerId])
+
+  const resetLayer = useCallback(() => {
+    setLayers(prev => prev.map(l => {
+      if (l.id !== selectedLayerId) return l
+      if (l.type === 'text') return { ...l, textContent: l.originalTextContent }
+      if (l.type === 'image') return { ...l, dataUrl: l.originalDataUrl }
+      return l
+    }))
+  }, [selectedLayerId])
+
+  const handleLayerDragEnd = useCallback((id, x, y) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, left: x, top: y } : l))
+  }, [])
+
+  const handleLayerTransformEnd = useCallback((id, e) => {
+    const node = e.target
+    setLayers(prev => prev.map(l => l.id === id ? {
+      ...l,
+      left: node.x(),
+      top: node.y(),
+      width: Math.max(5, node.width() * node.scaleX()),
+      height: Math.max(5, node.height() * node.scaleY()),
+    } : l))
+    e.target.scaleX(1)
+    e.target.scaleY(1)
+  }, [])
+
+  // ── Zoom controls ────────────────────────────────────────────────────────────
+
+  const handleZoomIn = () => setZoom(z => Math.min(z * 1.2, 4))
+  const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.05))
+  const handleZoomFit = () => setZoom(fitZoom)
+
+  const selectedLayer = layers.find(l => l.id === selectedLayerId) || null
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  const stageWidth = psdMeta ? psdMeta.width * zoom : 0
+  const stageHeight = psdMeta ? psdMeta.height * zoom : 0
+
+  const watermarkFontSize = psdMeta
+    ? Math.max(20, Math.min(psdMeta.width, psdMeta.height) * 0.08)
+    : 60
+
+  return (
+    <div
+      className="flex flex-col"
+      style={{ height: 'calc(100vh - 4rem)' }}
+    >
+      {/* Toolbar */}
+      <Toolbar
+        psdFile={psdFile}
+        psdMeta={psdMeta}
+        zoom={zoom}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomFit={handleZoomFit}
+        showLeft={showLeft}
+        showRight={showRight}
+        onToggleLeft={() => setShowLeft(v => !v)}
+        onToggleRight={() => setShowRight(v => !v)}
+        userBalance={user?.balance}
+        onExportClick={() => toast('Payment required to export', 'info', 'Export locked')}
+        isLg={isLg}
+      />
+
+      {/* Editor body */}
+      <div className="flex flex-1 min-h-0 relative">
+
+        {/* Left panel */}
+        <LeftPanel
+          show={showLeft}
+          onClose={() => setShowLeft(false)}
+          layers={layers}
+          selectedId={selectedLayerId}
+          onSelect={selectLayer}
+          onToggleVisible={toggleLayerVisible}
+          isMobile={!isLg}
+        />
+
+        {/* Canvas area */}
+        <div
+          ref={containerRef}
+          className="flex-1 min-w-0 flex items-center justify-center overflow-auto"
+          style={{ background: '#0a0a10' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedLayerId(null) }}
+        >
+          {loading && (
+            <div className="flex flex-col items-center gap-3">
+              <Spinner />
+              <p className="text-xs text-white/40">{loadingMsg}</p>
+            </div>
+          )}
+
+          {!loading && !psdMeta && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onDragOver={e => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={clsx(
+                'relative rounded-3xl border-2 border-dashed cursor-pointer transition-all duration-300 m-6',
+                dragging
+                  ? 'border-brand-400 bg-brand-500/10 scale-[1.01]'
+                  : 'border-white/[0.1] hover:border-brand-400/50 hover:bg-white/[0.02]'
+              )}
+              style={{ minWidth: 380, minHeight: 280 }}
+            >
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+                <motion.div
+                  animate={dragging ? { scale: 1.2, rotate: 10 } : { scale: 1, rotate: 0 }}
+                  className={clsx(
+                    'w-20 h-20 rounded-2xl mb-5 flex items-center justify-center border transition-all',
+                    dragging
+                      ? 'bg-brand-500/30 border-brand-400/50'
+                      : 'bg-white/[0.04] border-white/[0.08]'
+                  )}
+                >
+                  <Upload size={32} className={dragging ? 'text-brand-400' : 'text-white/30'} />
+                </motion.div>
+                <p className="text-lg font-semibold text-white/80 mb-2">
+                  {dragging ? 'Drop your PSD here!' : 'Drop your PSD file here'}
+                </p>
+                <p className="text-sm text-white/40 mb-4">or click to browse</p>
+                <p className="text-xs text-white/25">Only .psd files - max 50MB</p>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".psd"
+                className="hidden"
+                onChange={e => handleFile(e.target.files[0])}
+              />
+            </motion.div>
+          )}
+
+          {!loading && psdMeta && (
+            <div style={{ width: stageWidth, height: stageHeight, flexShrink: 0 }}>
+              <Stage
+                ref={stageRef}
+                width={stageWidth}
+                height={stageHeight}
+                scaleX={zoom}
+                scaleY={zoom}
+              >
+                <Layer>
+                  {layers.filter(l => l.visible).map(layer => {
+                    const isSelected = layer.id === selectedLayerId
+                    if (layer.type === 'image') {
+                      return (
+                        <KonvaLayerImage
+                          key={layer.id}
+                          layer={layer}
+                          isSelected={isSelected}
+                          onSelect={selectLayer}
+                          onDragEnd={handleLayerDragEnd}
+                          onTransformEnd={handleLayerTransformEnd}
+                          transformerRef={isSelected ? transformerRef : null}
+                        />
+                      )
+                    }
+                    if (layer.type === 'text') {
+                      return (
+                        <KonvaLayerText
+                          key={layer.id}
+                          layer={layer}
+                          isSelected={isSelected}
+                          onSelect={selectLayer}
+                          onDragEnd={handleLayerDragEnd}
+                          onTransformEnd={handleLayerTransformEnd}
+                          transformerRef={isSelected ? transformerRef : null}
+                        />
+                      )
+                    }
+                    return null
+                  })}
+
+                  {/* Watermark */}
+                  <KonvaText
+                    text="NOVA AI STUDIO"
+                    x={psdMeta.width / 2}
+                    y={psdMeta.height / 2}
+                    rotation={-35}
+                    opacity={0.25}
+                    fill="rgba(255,255,255,0.5)"
+                    fontSize={watermarkFontSize}
+                    fontStyle="bold"
+                    offsetX={watermarkFontSize * 4}
+                    offsetY={watermarkFontSize / 2}
+                    listening={false}
+                  />
+
+                  <Transformer ref={transformerRef} />
+                </Layer>
+              </Stage>
+            </div>
+          )}
+        </div>
+
+        {/* Right panel */}
+        <RightPanel
+          show={showRight}
+          onClose={() => setShowRight(false)}
+          selectedLayer={selectedLayer}
+          onLayerChange={updateLayer}
+          onResetLayer={resetLayer}
+          isMobile={!isLg}
+        />
+      </div>
+    </div>
+  )
+}
