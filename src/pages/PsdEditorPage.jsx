@@ -557,7 +557,7 @@ export default function PsdEditorPage() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportFormat, setExportFormat] = useState('png')
   const [exportQuality, setExportQuality] = useState(0.95)
-  const [showWatermark, setShowWatermark] = useState(true)
+  // watermark visibility is controlled imperatively via watermarkRef (see handleExport)
 
   // Panel visibility
   const [isLg, setIsLg] = useState(window.innerWidth >= 1024)
@@ -609,7 +609,6 @@ export default function PsdEditorPage() {
     setPsdMeta(null)
     setSelectedLayerId(null)
     setHasPaid(false)
-    setShowWatermark(true)
 
     try {
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -985,7 +984,6 @@ export default function PsdEditorPage() {
                     offsetX={watermarkFontSize * 4}
                     offsetY={watermarkFontSize / 2}
                     listening={false}
-                    visible={showWatermark}
                   />
 
                   <Transformer ref={transformerRef} />
