@@ -5,6 +5,7 @@ import { Stage, Layer, Image as KonvaImage, Text as KonvaText } from 'react-konv
 import { Download, ArrowLeft, Type, Image as ImageIcon, Upload, User, Star, AlertCircle } from 'lucide-react'
 import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
+import { useAuthStore } from '../store/useAuthStore'
 
 // ── useKonvaImage hook ─────────────────────────────────────────────────────────
 function useKonvaImage(dataUrl) {
@@ -23,8 +24,12 @@ function useKonvaImage(dataUrl) {
 }
 
 // ── FieldInput component ───────────────────────────────────────────────────────
-function FieldInput({ field, value, onChange }) {
+const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Verdana', 'Impact']
+const EXPORT_COST = 30
+
+function FieldInput({ field, value, onChange, textStyle, onTextStyleChange }) {
   const fileRef = useRef(null)
+  const [showStyle, setShowStyle] = useState(false)
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
@@ -47,11 +52,20 @@ function FieldInput({ field, value, onChange }) {
   }
 
   if (field.type === 'text') {
+    const ts = textStyle || {}
     return (
       <div className="space-y-1.5">
-        <label className="text-[11px] text-white/40 uppercase tracking-wider flex items-center gap-1.5 block">
-          <Type size={11} className="text-brand-400" /> {field.label}
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+            <Type size={11} className="text-brand-400" /> {field.label}
+          </label>
+          <button
+            onClick={() => setShowStyle(v => !v)}
+            className="text-[10px] px-2 py-0.5 rounded-lg transition-colors"
+            style={{ background: showStyle ? 'rgba(110,75,255,0.2)' : 'rgba(255,255,255,0.05)', color: showStyle ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.3)' }}>
+            {showStyle ? 'Ẩn style' : 'Style ↓'}
+          </button>
+        </div>
         <textarea
           value={value || ''}
           onChange={e => onChange(e.target.value)}
@@ -60,6 +74,61 @@ function FieldInput({ field, value, onChange }) {
           onFocus={e => e.target.style.borderColor = 'rgba(110,75,255,0.55)'}
           onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.09)'}
         />
+        {showStyle && onTextStyleChange && (
+          <div className="space-y-2 pt-1">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[10px] text-white/30 mb-1">Font</p>
+                <select
+                  value={ts.fontFamily || 'Inter'}
+                  onChange={e => onTextStyleChange({ fontFamily: e.target.value })}
+                  className="w-full text-[11px] rounded-lg px-2 py-1.5 text-white/70 outline-none"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                  {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+              <div>
+                <p className="text-[10px] text-white/30 mb-1">Cỡ chữ</p>
+                <input
+                  type="number" min={8} max={200}
+                  value={ts.fontSize || 16}
+                  onChange={e => onTextStyleChange({ fontSize: Number(e.target.value) })}
+                  className="w-full text-[11px] rounded-lg px-2 py-1.5 text-white/70 outline-none"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <p className="text-[10px] text-white/30 mb-1">Màu chữ</p>
+                <input
+                  type="color"
+                  value={ts.color || '#ffffff'}
+                  onChange={e => onTextStyleChange({ color: e.target.value })}
+                  className="w-full h-8 rounded-lg cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)' }}
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-white/30 mb-1">Style</p>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => onTextStyleChange({ bold: !ts.bold })}
+                    className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
+                    style={{ background: ts.bold ? 'rgba(110,75,255,0.3)' : 'rgba(255,255,255,0.06)', color: ts.bold ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                    B
+                  </button>
+                  <button
+                    onClick={() => onTextStyleChange({ italic: !ts.italic })}
+                    className="w-8 h-8 rounded-lg text-xs italic transition-all"
+                    style={{ background: ts.italic ? 'rgba(110,75,255,0.3)' : 'rgba(255,255,255,0.06)', color: ts.italic ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                    I
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -115,9 +184,12 @@ function FieldInput({ field, value, onChange }) {
 }
 
 // ── KonvaOverlayText ───────────────────────────────────────────────────────────
-function KonvaOverlayText({ field, value, scale, isSelected, onSelect, onDragEnd }) {
+function KonvaOverlayText({ field, value, scale, isSelected, onSelect, onDragEnd, textStyle }) {
   const nodeRef = useRef(null)
-  const fontStyle = [field.bold ? 'bold' : '', field.italic ? 'italic' : ''].filter(Boolean).join(' ') || 'normal'
+  const fontStyle = [
+    (textStyle?.bold ?? field.bold) ? 'bold' : '',
+    (textStyle?.italic ?? field.italic) ? 'italic' : ''
+  ].filter(Boolean).join(' ') || 'normal'
   if (!value) return null
   return (
     <KonvaText
@@ -126,9 +198,9 @@ function KonvaOverlayText({ field, value, scale, isSelected, onSelect, onDragEnd
       x={(field.x || 0) * scale}
       y={(field.y || 0) * scale}
       width={(field.width || 200) * scale}
-      fontFamily={field.fontFamily || 'Inter'}
-      fontSize={(field.fontSize || 16) * scale}
-      fill={field.color || '#ffffff'}
+      fontFamily={textStyle?.fontFamily || field.fontFamily || 'Inter'}
+      fontSize={((textStyle?.fontSize) || field.fontSize || 16) * scale}
+      fill={textStyle?.color || field.color || '#ffffff'}
       fontStyle={fontStyle}
       onClick={() => onSelect && onSelect(field.role)}
       onTap={() => onSelect && onSelect(field.role)}
@@ -214,12 +286,23 @@ export default function CustomerEditorPage() {
   const navigate = useNavigate()
   const product = useShopStore(s => s.getProduct(productId))
   const { isOwned, toast } = useAppStore()
+  const { user, deductBalance } = useAuthStore()
+  const isAdmin = useAuthStore(s => s.isAdmin())
+  const [hasPaid, setHasPaid] = useState(() => {
+    try { return sessionStorage.getItem(`nova_paid_${productId}`) === '1' } catch { return false }
+  })
+  const [showPayModal, setShowPayModal] = useState(false)
 
   const containerRef = useRef(null)
   const stageRef = useRef(null)
   const [containerSize, setContainerSize] = useState({ w: 800, h: 450 })
   const [selectedRole, setSelectedRole] = useState(null)
   const [overrides, setOverrides] = useState({})
+  const [textStyles, setTextStyles] = useState({}) // { [role]: { fontFamily, fontSize, color, bold, italic } }
+  const [showLayerGuide, setShowLayerGuide] = useState(false)
+  const handleTextStyleChange = useCallback((role, changes) => {
+    setTextStyles(prev => ({ ...prev, [role]: { ...(prev[role] || {}), ...changes } }))
+  }, [])
 
   const [customValues, setCustomValues] = useState(() => {
     if (!product?.editableFields) return {}
@@ -267,25 +350,55 @@ export default function CustomerEditorPage() {
     setOverrides(prev => ({ ...prev, [role]: { x, y } }))
   }, [])
 
-  const handleDownload = useCallback(() => {
-    if (!stageRef.current) {
-      toast('Canvas chua san sang', 'error', 'Loi')
+  const handleDownload = useCallback((force = false) => {
+    // Payment gate — admin always free, regular users must pay
+    if (!force && !isAdmin && !hasPaid) {
+      setShowPayModal(true)
       return
     }
-    try {
-      const dataUrl = stageRef.current.toDataURL({ mimeType: 'image/png', pixelRatio: 2 })
+
+    const filename = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}`
+
+    const downloadDataUrl = (dataUrl, ext = 'png') => {
       const a = document.createElement('a')
       a.href = dataUrl
-      a.download = `nova-custom-${product?.title?.replace(/\s+/g, '-') || 'design'}-${Date.now()}.png`
+      a.download = `${filename}.${ext}`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      toast('Da tai ve thanh cong!', 'success', 'Download')
-    } catch (err) {
-      const detail = err?.name === 'SecurityError' ? 'Canvas bị taint do ảnh từ domain khác. Thử lại sau.' : 'Vui lòng thử lại.'
-      toast(detail, 'error', 'Download lỗi')
     }
-  }, [product, toast])
+
+    const downloadOriginal = () => {
+      const srcUrl = (product?.images?.length > 0 ? product.images[0] : null) || product?.previewDataUrl
+      if (srcUrl) {
+        downloadDataUrl(srcUrl, 'png')
+        toast('Đã tải ảnh gốc thành công!', 'success', 'Download')
+      } else {
+        toast('Không có ảnh để tải', 'error', 'Lỗi')
+      }
+    }
+
+    const hasCustomFields = (product?.editableFields?.length ?? 0) > 0
+    const hasCustomValues = Object.values(customValues).some(v => v && v !== '')
+
+    if (!hasCustomFields || !hasCustomValues) {
+      downloadOriginal()
+      return
+    }
+
+    if (!stageRef.current) {
+      downloadOriginal()
+      return
+    }
+
+    try {
+      const dataUrl = stageRef.current.toDataURL({ mimeType: 'image/png', pixelRatio: 2 })
+      downloadDataUrl(dataUrl, 'png')
+      toast('Đã tải về thành công!', 'success', 'Download')
+    } catch (err) {
+      downloadOriginal()
+    }
+  }, [product, customValues, toast, isAdmin, hasPaid])
 
   if (!product) return <NotFoundView onBack={() => navigate('/shop')} />
   if (!isOwned(productId)) return <NotOwnedView onBuy={() => navigate('/shop')} />
@@ -325,7 +438,7 @@ export default function CustomerEditorPage() {
           onClick={handleDownload}
           className="btn-primary flex items-center gap-1.5 px-4 py-2 text-sm"
         >
-          <Download size={14} /> Tai ve
+          <Download size={14} /> {isAdmin || hasPaid ? 'Tải về' : `Tải về (${EXPORT_COST} ⭐)`}
         </button>
       </motion.div>
 
@@ -374,9 +487,45 @@ export default function CustomerEditorPage() {
                     field={field}
                     value={customValues[field.role] ?? field.defaultValue ?? ''}
                     onChange={val => handleFieldChange(field.role, val)}
+                    textStyle={textStyles[field.role]}
+                    onTextStyleChange={field.type === 'text' ? (changes) => handleTextStyleChange(field.role, changes) : undefined}
                   />
                 </motion.div>
               ))
+            )}
+          </div>
+
+          {/* Layer naming guide — PSD authoring reference (intentionally static, not tied to product.editableFields) */}
+          <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={() => setShowLayerGuide(v => !v)}
+              className="w-full flex items-center justify-between text-[10px] text-white/30 hover:text-white/50 transition-colors py-1">
+              <span className="flex items-center gap-1.5">
+                <span>📋</span> Quy chuẩn tên layer PSD
+              </span>
+              <span>{showLayerGuide ? '▲' : '▼'}</span>
+            </button>
+            {showLayerGuide && (
+              <div className="mt-2 space-y-1 text-[10px]">
+                {[
+                  { name: 'text_1', label: 'Nội dung chính', type: 'text' },
+                  { name: 'text_2', label: 'Nội dung phụ', type: 'text' },
+                  { name: 'text_3', label: 'Nội dung 3', type: 'text' },
+                  { name: 'title_logo', label: 'Tên / Tiêu đề Logo', type: 'text' },
+                  { name: 'text_logo', label: 'Text logo phụ', type: 'text' },
+                  { name: 'nvat_png', label: 'Nhân vật PNG', type: 'image' },
+                  { name: 'avt_png', label: 'Avatar (tròn)', type: 'image' },
+                  { name: 'logo', label: 'Logo chính', type: 'image' },
+                ].map(r => (
+                  <div key={r.name} className="flex items-center gap-2 py-0.5">
+                    <code className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                      style={{ background: r.type === 'text' ? 'rgba(110,75,255,0.2)' : 'rgba(77,208,255,0.15)', color: r.type === 'text' ? 'rgba(167,139,250,1)' : 'rgba(77,208,255,1)' }}>
+                      {r.name}
+                    </code>
+                    <span className="text-white/40">{r.label}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </motion.div>
@@ -420,6 +569,7 @@ export default function CustomerEditorPage() {
                         isSelected={selectedRole === field.role}
                         onSelect={setSelectedRole}
                         onDragEnd={handleOverrideDragEnd}
+                        textStyle={textStyles[field.role]}
                       />
                     )
                   }
@@ -443,6 +593,72 @@ export default function CustomerEditorPage() {
           )}
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setShowPayModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+            style={{ background: 'rgba(14,14,24,0.98)', border: '1px solid rgba(110,75,255,0.3)', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}>
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+                style={{ background: 'rgba(110,75,255,0.15)', border: '1px solid rgba(110,75,255,0.3)' }}>
+                <Download size={24} className="text-brand-400" />
+              </div>
+              <h3 className="font-display text-lg font-bold text-white mb-1">Tải xuống có phí</h3>
+              <p className="text-sm text-white/50">Trả {EXPORT_COST} coins để tải ảnh không watermark</p>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-xl"
+              style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.2)' }}>
+              <span className="text-sm text-white/60">Chi phí tải xuống</span>
+              <div className="flex items-center gap-1.5 font-bold text-yellow-400">
+                <Star size={14} className="fill-yellow-400" /> {EXPORT_COST} coins
+              </div>
+            </div>
+            {user && (
+              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg text-xs"
+                style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <span className="text-white/35">Số dư của bạn</span>
+                <span className={user.balance >= EXPORT_COST ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                  {user?.balance?.toLocaleString('vi-VN') ?? 0} coins
+                </span>
+              </div>
+            )}
+            {!user && (
+              <p className="text-xs text-center text-white/40">Vui lòng đăng nhập để thanh toán</p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowPayModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm text-white/50 transition-all"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                Hủy
+              </button>
+              <button
+                disabled={!user || (user?.balance ?? 0) < EXPORT_COST}
+                onClick={() => {
+                  if (!user || user.balance < EXPORT_COST) return
+                  const ok = deductBalance(EXPORT_COST)
+                  if (!ok) { toast('Số dư không đủ!', 'error', 'Lỗi'); return }
+                  try { sessionStorage.setItem(`nova_paid_${productId}`, '1') } catch {}
+                  setHasPaid(true)
+                  setShowPayModal(false)
+                  toast('Thanh toán thành công! Đang tải...', 'success', 'OK')
+                  // Capture canvas synchronously while stageRef is still mounted,
+                  // then trigger the shared download path with force=true.
+                  handleDownload(true)
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', color: '#fff' }}>
+                Trả {EXPORT_COST} coins
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }
