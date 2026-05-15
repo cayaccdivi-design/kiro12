@@ -167,7 +167,7 @@ const FEATURES = [
   { icon: '🛍️', title: 'Cửa hàng thiết kế',  desc: 'Mua thumbnail, logo, banner PSD chất lượng cao. Chỉnh sửa trực tiếp trên web sau khi mua.',  link: '/shop',       accent: '#6e4bff' },
   { icon: '✂️',  title: 'Xóa nền tự động',    desc: 'Tách nền ảnh chỉ trong 1 giây. Hỗ trợ PNG, JPG. Không cần Photoshop.',                       link: '/remove-bg',  accent: '#0ea5e9' },
   { icon: '📦',  title: 'Kho tài nguyên',      desc: '10,000+ file PSD, icon, mockup miễn phí. Tải về và dùng ngay cho dự án của bạn.',             link: '/resources',  accent: '#8b5cf6' },
-  { icon: '🎁',  title: 'Phần thưởng hàng ngày', desc: 'Nhận voucher, coin và ưu đãi hàng ngày. Dùng để mua sản phẩm hoặc xuất ảnh không giới hạn.', link: '/gift',       accent: '#10b981' },
+  { icon: '🖼️', title: 'Ghép ảnh Collage',   desc: 'Ghép nhiều ảnh thành collage đẹp với nhiều bố cục. Tải về PNG chất lượng cao ngay lập tức.',   link: '/collage',    accent: '#ec4899' },
 ]
 
 const REVIEWS = [

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingBag, Search, Star, Coins, CheckCircle, Eye, Zap, Lock, Sparkles, Edit2, Trash2, ChevronLeft, ChevronRight, ImagePlus } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
@@ -227,7 +227,7 @@ function EditProductModal({ open, product, onClose, onSave, onDelete }) {
 }
 
 /* ─── CARD SLIDESHOW ─────────────────────────────────────── */
-function CardSlideshow({ images, ratio, gradient, icon, type, isHovered }) {
+const CardSlideshow = memo(function CardSlideshow({ images, ratio, gradient, icon, type, isHovered }) {
   const [current, setCurrent] = useState(0)
   const [dir, setDir] = useState(1)
 
@@ -363,7 +363,7 @@ function CardSlideshow({ images, ratio, gradient, icon, type, isHovered }) {
       )}
     </div>
   )
-}
+})
 
 /* ─── PRODUCT CARD ───────────────────────────────────────── */
 function ProductCard({ p, onClick }) {
@@ -531,8 +531,12 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
       return
     }
     if (user.balance < finalPrice) {
-      toast(`Cần thêm ${(finalPrice - user.balance).toLocaleString('vi-VN')}đ`, 'error', 'Không đủ số dư')
-      return
+      // Admin bypass — deductBalance already returns true for admin
+      const isAdminUser = user.email === 'finnlive246@gmail.com'
+      if (!isAdminUser) {
+        toast(`Cần thêm ${(finalPrice - user.balance).toLocaleString('vi-VN')}đ`, 'error', 'Không đủ số dư')
+        return
+      }
     }
     deductBalance(finalPrice)
     addOwned(product.id)

@@ -1079,6 +1079,14 @@ export default function PsdEditorPage() {
       toast('Vui lòng đăng nhập để thanh toán', 'error', 'Chưa đăng nhập')
       return
     }
+    // Admin sử dụng miễn phí
+    if (user.email === 'finnlive246@gmail.com') {
+      setHasPaid(true)
+      setShowPaymentModal(false)
+      toast('Admin: xuất ảnh miễn phí!', 'success', 'Admin')
+      setShowExportModal(true)
+      return
+    }
     const success = deductBalance(50)
     if (!success) {
       toast('Số dư không đủ! Hãy nạp thêm coins.', 'error', 'Thanh toán thất bại')
