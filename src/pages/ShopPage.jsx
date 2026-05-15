@@ -186,25 +186,26 @@ function ProductCard({ p, onClick }) {
       transition={{ duration: 0.28, ease: [0.22, 0.8, 0.22, 1] }}
       whileHover={{ y: -5 }}
       onClick={() => onClick(p)}
-      className="group relative flex flex-col rounded-2xl overflow-hidden cursor-pointer"
+      className="group relative flex flex-col rounded-2xl overflow-hidden cursor-pointer h-full"
       style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        backdropFilter: 'blur(20px)',
-        transition: 'box-shadow 0.3s ease, border-color 0.3s ease',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.09)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06)',
+        transition: 'box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.borderColor = 'rgba(110,75,255,0.35)'
-        e.currentTarget.style.boxShadow = '0 16px 48px rgba(110,75,255,0.18), 0 4px 12px rgba(0,0,0,0.3)'
+        e.currentTarget.style.borderColor = 'rgba(110,75,255,0.45)'
+        e.currentTarget.style.boxShadow = '0 20px 60px rgba(110,75,255,0.22), 0 0 0 1px rgba(110,75,255,0.2), inset 0 1px 0 rgba(255,255,255,0.08)'
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-        e.currentTarget.style.boxShadow = 'none'
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'
+        e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06)'
       }}
     >
       {/* ── Thumbnail ── */}
       <div className="relative overflow-hidden flex-shrink-0"
-        style={{ aspectRatio: p.ratio, background: p.previewDataUrl ? '#0a0a10' : p.gradient }}>
+        style={{ aspectRatio: '16/9', background: p.previewDataUrl ? '#0a0a10' : p.gradient }}>
 
         {/* Preview image for store products */}
         {p.previewDataUrl ? (
@@ -257,6 +258,12 @@ function ProductCard({ p, onClick }) {
           </span>
         </div>
 
+        {/* Bottom fade */}
+        <div className="absolute bottom-0 inset-x-0 h-12 pointer-events-none"
+          style={{ background: 'linear-gradient(to top, rgba(7,7,16,0.6), transparent)' }} />
+        {/* Top shimmer line */}
+        <div className="absolute inset-x-0 top-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)' }} />
         {/* Hover overlay */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20"
           style={{ background: 'linear-gradient(180deg, rgba(7,7,16,0) 30%, rgba(7,7,16,0.55) 100%)' }}>
@@ -321,6 +328,15 @@ function ProductCard({ p, onClick }) {
               style={{ background: 'rgba(43,242,192,0.15)', border: '1px solid rgba(43,242,192,0.3)', color: 'rgba(43,242,192,1)' }}>
               {p.discountCode}
               {p.discountPercent > 0 ? ` -${p.discountPercent}%` : ''}
+            </span>
+          </div>
+        )}
+        {/* Nút tùy chỉnh nếu đã mua và có editableFields */}
+        {owned && p.editableFields?.length > 0 && (
+          <div className="mt-1">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-lg font-semibold"
+              style={{ background: 'rgba(77,208,255,0.12)', border: '1px solid rgba(77,208,255,0.3)', color: 'rgba(77,208,255,1)' }}>
+              ✏️ Có thể tùy chỉnh
             </span>
           </div>
         )}
@@ -605,9 +621,11 @@ export default function ShopPage() {
       <AnimatePresence mode="popLayout">
         {filtered.length > 0 ? (
           <motion.div layout
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
             {filtered.map(p => (
-              <ProductCard key={p.id} p={p} onClick={setSelected} />
+              <div key={p.id} className="flex flex-col">
+                <ProductCard p={p} onClick={setSelected} />
+              </div>
             ))}
           </motion.div>
         ) : (
