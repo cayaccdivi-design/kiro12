@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingBag, Search, Star, Coins, CheckCircle, Eye, Zap, Lock, Sparkles } from 'lucide-react'
+import { ShoppingBag, Search, Star, Coins, CheckCircle, Eye, Zap, Lock, Sparkles, Edit2, Trash2 } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
+import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
 import { useNavigate } from 'react-router-dom'
 import Modal from '../components/ui/Modal'
@@ -36,6 +37,139 @@ const TYPES = [
   { value:'animated', label:'Động ✦' },
 ]
 
+/* ─── EDIT PRODUCT MODAL ─────────────────────────────────── */
+const EDIT_CATEGORIES = [
+  { value: 'thumbnail',      label: 'Thumbnail' },
+  { value: 'logo',           label: 'Logo' },
+  { value: 'banner-shop',    label: 'Banner Shop' },
+  { value: 'banner-youtube', label: 'Banner YouTube' },
+  { value: 'banner-discord', label: 'Banner Discord' },
+]
+
+function EditProductModal({ open, product, onClose, onSave, onDelete }) {
+  const [form, setForm] = useState({
+    title: '', desc: '', category: 'thumbnail', tag: '',
+    price: 0, badge: '', discountCode: '', discountPercent: 0,
+  })
+
+  // Sync form when product changes
+  if (product && form.title === '' && product.title) {
+    setForm({
+      title: product.title || '',
+      desc: product.desc || '',
+      category: product.category || 'thumbnail',
+      tag: product.tag || '',
+      price: product.price || 0,
+      badge: product.badge || '',
+      discountCode: product.discountCode || '',
+      discountPercent: product.discountPercent || 0,
+    })
+  }
+
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.09)',
+    borderRadius: 12,
+    color: 'rgba(255,255,255,0.85)',
+    padding: '8px 12px',
+    width: '100%',
+    outline: 'none',
+    fontSize: 13,
+  }
+  const labelStyle = {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    display: 'block',
+    marginBottom: 6,
+  }
+
+  const handleClose = () => {
+    setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0 })
+    onClose()
+  }
+
+  const handleSave = () => {
+    onSave(form)
+    setForm({ title: '', desc: '', category: 'thumbnail', tag: '', price: 0, badge: '', discountCode: '', discountPercent: 0 })
+  }
+
+  const handleDelete = () => {
+    if (window.confirm('Xác nhận xóa sản phẩm này?')) {
+      onDelete(product.id)
+    }
+  }
+
+  if (!product) return null
+  return (
+    <Modal open={open} onClose={handleClose} title="Chỉnh sửa sản phẩm" size="md">
+      <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div>
+          <label style={labelStyle}>Tiêu đề *</label>
+          <input style={inputStyle} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+        </div>
+        <div>
+          <label style={labelStyle}>Mô tả</label>
+          <textarea style={{ ...inputStyle, minHeight: 64, resize: 'vertical' }} value={form.desc} onChange={e => setForm(f => ({ ...f, desc: e.target.value }))} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label style={labelStyle}>Danh mục</label>
+            <select style={inputStyle} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+              {EDIT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Tag (tối đa 12 ký tự)</label>
+            <input style={inputStyle} value={form.tag} maxLength={12} onChange={e => setForm(f => ({ ...f, tag: e.target.value }))} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label style={labelStyle}>Giá (coins)</label>
+            <input style={inputStyle} type="number" min={0} value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label style={labelStyle}>Badge</label>
+            <select style={inputStyle} value={form.badge} onChange={e => setForm(f => ({ ...f, badge: e.target.value }))}>
+              <option value="">Không có</option>
+              <option value="NEW">NEW</option>
+              <option value="HOT">HOT</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label style={labelStyle}>Mã giảm giá</label>
+            <input style={inputStyle} value={form.discountCode} onChange={e => setForm(f => ({ ...f, discountCode: e.target.value }))} placeholder="e.g. SALE20" />
+          </div>
+          <div>
+            <label style={labelStyle}>% Giảm (0–100)</label>
+            <input style={inputStyle} type="number" min={0} max={100} value={form.discountPercent} onChange={e => setForm(f => ({ ...f, discountPercent: Number(e.target.value) }))} />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button onClick={handleDelete}
+            className="px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: 'rgba(252,165,165,1)' }}>
+            <Trash2 size={13} /> Xóa
+          </button>
+          <button onClick={handleClose}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.6)' }}>
+            Hủy
+          </button>
+          <button onClick={handleSave} disabled={!form.title.trim()}
+            className="flex-1 btn-primary py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <Edit2 size={13} /> Lưu thay đổi
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 /* ─── PRODUCT CARD ───────────────────────────────────────── */
 function ProductCard({ p, onClick }) {
   const { isOwned } = useAppStore()
@@ -68,25 +202,32 @@ function ProductCard({ p, onClick }) {
     >
       {/* ── Thumbnail ── */}
       <div className="relative overflow-hidden flex-shrink-0"
-        style={{ aspectRatio: p.ratio, background: p.gradient }}>
+        style={{ aspectRatio: p.ratio, background: p.previewDataUrl ? '#0a0a10' : p.gradient }}>
 
-        {/* Light refraction */}
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 75% 50% at 50% 0%, rgba(255,255,255,0.18), transparent 60%)' }} />
+        {/* Preview image for store products */}
+        {p.previewDataUrl ? (
+          <img src={p.previewDataUrl} alt={p.title} className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <>
+            {/* Light refraction */}
+            <div className="absolute inset-0 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse 75% 50% at 50% 0%, rgba(255,255,255,0.18), transparent 60%)' }} />
 
-        {/* Animated shimmer for animated type */}
-        {p.type === 'animated' && (
-          <div className="absolute inset-0"
-            style={{ background: p.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.6 }} />
+            {/* Animated shimmer for animated type */}
+            {p.type === 'animated' && (
+              <div className="absolute inset-0"
+                style={{ background: p.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.6 }} />
+            )}
+
+            {/* Big icon */}
+            <div className="absolute inset-0 flex items-center justify-center select-none">
+              <span className="text-5xl sm:text-6xl font-bold text-white/85 transition-transform duration-400 group-hover:scale-110 drop-shadow-lg"
+                style={{ textShadow: '0 4px 20px rgba(0,0,0,0.4), 0 0 40px rgba(255,255,255,0.15)' }}>
+                {p.icon}
+              </span>
+            </div>
+          </>
         )}
-
-        {/* Big icon */}
-        <div className="absolute inset-0 flex items-center justify-center select-none">
-          <span className="text-5xl sm:text-6xl font-bold text-white/85 transition-transform duration-400 group-hover:scale-110 drop-shadow-lg"
-            style={{ textShadow: '0 4px 20px rgba(0,0,0,0.4), 0 0 40px rgba(255,255,255,0.15)' }}>
-            {p.icon}
-          </span>
-        </div>
 
         {/* Top-left: tag + badge */}
         <div className="absolute top-3 left-3 flex gap-1.5 z-10">
@@ -160,8 +301,10 @@ function ProductCard({ p, onClick }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Star size={11} className="text-yellow-400 fill-yellow-400" />
-            <span className="text-xs font-medium text-white/55">{p.rating}</span>
-            <span className="text-[10px] text-white/30">· {p.sold} bán</span>
+            {p.rating ? (
+              <span className="text-xs font-medium text-white/55">{p.rating}</span>
+            ) : null}
+            <span className="text-[10px] text-white/30">· {p.sold ?? 0} bán</span>
           </div>
           <div className="flex items-center gap-1 font-display font-bold text-sm"
             style={{ color: '#facc15' }}>
@@ -169,17 +312,32 @@ function ProductCard({ p, onClick }) {
             {p.price.toLocaleString('vi-VN')}đ
           </div>
         </div>
+        {/* Discount code badge */}
+        {p.discountCode && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="px-1.5 py-0.5 text-[9px] rounded font-bold"
+              style={{ background: 'rgba(43,242,192,0.15)', border: '1px solid rgba(43,242,192,0.3)', color: 'rgba(43,242,192,1)' }}>
+              {p.discountCode}
+              {p.discountPercent > 0 ? ` -${p.discountPercent}%` : ''}
+            </span>
+          </div>
+        )}
       </div>
     </motion.article>
   )
 }
 
 /* ─── PRODUCT MODAL ──────────────────────────────────────── */
-function ProductModal({ product, onClose }) {
+function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }) {
   const { user, deductBalance } = useAuthStore()
   const { addOwned, isOwned, toast } = useAppStore()
+  const updateProduct = useShopStore(s => s.updateProduct)
   const navigate = useNavigate()
   const owned = product ? isOwned(product.id) : false
+  const [inputCode, setInputCode] = useState('')
+
+  const appliedDiscount = !!(inputCode && product?.discountCode && inputCode === product.discountCode && product?.discountPercent > 0)
+  const finalPrice = appliedDiscount ? Math.round(product.price * (1 - product.discountPercent / 100)) : (product?.price ?? 0)
 
   const buy = () => {
     if (!user) {
@@ -187,12 +345,15 @@ function ProductModal({ product, onClose }) {
       navigate('/auth')
       return
     }
-    if (user.balance < product.price) {
-      toast(`Cần thêm ${(product.price - user.balance).toLocaleString('vi-VN')}đ`, 'error', 'Không đủ số dư')
+    if (user.balance < finalPrice) {
+      toast(`Cần thêm ${(finalPrice - user.balance).toLocaleString('vi-VN')}đ`, 'error', 'Không đủ số dư')
       return
     }
-    deductBalance(product.price)
+    deductBalance(finalPrice)
     addOwned(product.id)
+    if (isStoreProduct) {
+      updateProduct(product.id, { sold: (product.sold || 0) + 1 })
+    }
     toast(`Đã mua "${product.title}" thành công! 🎉`, 'success', 'Mua hàng thành công')
     onClose()
   }
@@ -204,19 +365,25 @@ function ProductModal({ product, onClose }) {
       <div className="grid md:grid-cols-[1.3fr_1fr]">
         {/* Preview */}
         <div className="relative overflow-hidden rounded-tl-3xl rounded-tr-3xl md:rounded-tr-none md:rounded-bl-3xl"
-          style={{ aspectRatio: '4/3', background: product.gradient, minHeight: 220 }}>
-          <div className="absolute inset-0"
-            style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.2), transparent 60%)' }} />
-          {product.type === 'animated' && (
-            <div className="absolute inset-0"
-              style={{ background: product.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.55 }} />
+          style={{ aspectRatio: '4/3', background: product.previewDataUrl ? '#0a0a10' : product.gradient, minHeight: 220 }}>
+          {product.previewDataUrl ? (
+            <img src={product.previewDataUrl} alt={product.title} className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <>
+              <div className="absolute inset-0"
+                style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.2), transparent 60%)' }} />
+              {product.type === 'animated' && (
+                <div className="absolute inset-0"
+                  style={{ background: product.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.55 }} />
+              )}
+              <div className="absolute inset-0 flex items-center justify-center select-none">
+                <span className="text-8xl font-bold text-white/75"
+                  style={{ textShadow: '0 6px 28px rgba(0,0,0,0.5)' }}>
+                  {product.icon}
+                </span>
+              </div>
+            </>
           )}
-          <div className="absolute inset-0 flex items-center justify-center select-none">
-            <span className="text-8xl font-bold text-white/75"
-              style={{ textShadow: '0 6px 28px rgba(0,0,0,0.5)' }}>
-              {product.icon}
-            </span>
-          </div>
           <div className="absolute top-4 left-4 flex gap-2 z-10">
             <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md"
               style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
@@ -267,22 +434,60 @@ function ProductModal({ product, onClose }) {
 
           {/* Price block */}
           <div className="mt-auto space-y-2.5">
+            {/* Discount code input */}
+            {product.discountCode && !owned && (
+              <div>
+                <label className="text-[11px] text-white/40 uppercase tracking-wider mb-1 block">Mã giảm giá</label>
+                <div className="flex gap-2">
+                  <input
+                    value={inputCode}
+                    onChange={e => setInputCode(e.target.value)}
+                    placeholder="Nhập mã..."
+                    className="flex-1 px-3 py-2 rounded-xl text-xs outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: appliedDiscount ? '1px solid rgba(43,242,192,0.5)' : '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.85)' }}
+                  />
+                  {appliedDiscount && (
+                    <span className="px-2 py-1 rounded-xl text-[10px] font-bold flex items-center"
+                      style={{ background: 'rgba(43,242,192,0.15)', color: 'rgba(43,242,192,1)' }}>
+                      -{product.discountPercent}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between px-4 py-3 rounded-xl"
               style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.2)' }}>
-              <span className="text-sm text-white/55">Giá sản phẩm</span>
-              <span className="font-display text-xl font-bold text-yellow-400 flex items-center gap-1.5">
-                <Coins size={15} /> {product.price.toLocaleString('vi-VN')}đ
+              <span className="text-sm text-white/55">
+                {appliedDiscount ? 'Giá sau giảm' : 'Giá sản phẩm'}
               </span>
+              <div className="flex items-center gap-2">
+                {appliedDiscount && (
+                  <span className="text-sm text-white/30 line-through">{product.price.toLocaleString('vi-VN')}đ</span>
+                )}
+                <span className="font-display text-xl font-bold text-yellow-400 flex items-center gap-1.5">
+                  <Coins size={15} /> {finalPrice.toLocaleString('vi-VN')}đ
+                </span>
+              </div>
             </div>
 
             {user && (
               <div className="flex items-center justify-between px-3 py-1.5 text-xs rounded-lg"
                 style={{ background: 'rgba(255,255,255,0.03)' }}>
                 <span className="text-white/35">Số dư của bạn</span>
-                <span className={`font-semibold ${user.balance >= product.price ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <span className={`font-semibold ${user.balance >= finalPrice ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {user.balance.toLocaleString('vi-VN')}đ
                 </span>
               </div>
+            )}
+
+            {/* Admin edit/delete buttons for store products */}
+            {isAdmin && isStoreProduct && (
+              <button onClick={() => onEditClick && onEditClick(product)}
+                className="w-full py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                style={{ background: 'rgba(110,75,255,0.12)', border: '1px solid rgba(110,75,255,0.25)', color: 'rgba(167,139,250,1)' }}>
+                <Edit2 size={13} /> Chỉnh sửa sản phẩm
+              </button>
             )}
 
             {owned ? (
@@ -294,7 +499,7 @@ function ProductModal({ product, onClose }) {
             ) : (
               <button onClick={buy} className="w-full btn-primary py-3 text-sm flex items-center justify-center gap-2">
                 {user
-                  ? <><Zap size={14} /> Mua ngay — {product.price.toLocaleString('vi-VN')}đ</>
+                  ? <><Zap size={14} /> Mua ngay — {finalPrice.toLocaleString('vi-VN')}đ</>
                   : <><Lock size={14} /> Đăng nhập để mua</>}
               </button>
             )}
@@ -311,8 +516,15 @@ export default function ShopPage() {
   const [type,   setType]   = useState('all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
+  const [editTarget, setEditTarget] = useState(null)
 
-  const filtered = PRODUCTS.filter(p => {
+  const { products: storeProducts, updateProduct, deleteProduct } = useShopStore()
+  const isAdmin = useAuthStore(s => s.isAdmin())
+  const { toast } = useAppStore()
+
+  const allProducts = [...PRODUCTS, ...storeProducts]
+
+  const filtered = allProducts.filter(p => {
     if (cat  !== 'all' && p.category !== cat)                              return false
     if (type !== 'all' && p.type     !== type)                             return false
     if (search && !p.title.toLowerCase().includes(search.toLowerCase()))   return false
@@ -401,7 +613,30 @@ export default function ShopPage() {
         )}
       </AnimatePresence>
 
-      <ProductModal product={selected} onClose={() => setSelected(null)} />
+      <ProductModal
+        product={selected}
+        onClose={() => setSelected(null)}
+        isAdmin={isAdmin}
+        isStoreProduct={selected ? !PRODUCTS.find(p => p.id === selected.id) : false}
+        onEditClick={(p) => { setEditTarget(p); setSelected(null) }}
+      />
+
+      <EditProductModal
+        open={!!editTarget}
+        product={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={(changes) => {
+          updateProduct(editTarget.id, changes)
+          setEditTarget(null)
+          toast('Đã cập nhật sản phẩm', 'success', 'Cập nhật')
+        }}
+        onDelete={(id) => {
+          deleteProduct(id)
+          setEditTarget(null)
+          setSelected(null)
+          toast('Đã xóa sản phẩm', 'success', 'Xóa')
+        }}
+      />
     </div>
   )
 }
