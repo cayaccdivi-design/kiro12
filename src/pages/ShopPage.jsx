@@ -545,12 +545,19 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
 
   return (
     <Modal open={!!product} onClose={onClose} size="lg">
-      <div className="grid md:grid-cols-[1.3fr_1fr]">
-        {/* Preview */}
-        <div className="relative overflow-hidden rounded-tl-3xl rounded-tr-3xl md:rounded-tr-none md:rounded-bl-3xl"
-          style={{ aspectRatio: '4/3', background: product.previewDataUrl ? '#0a0a10' : product.gradient, minHeight: 220 }}>
-          {product.previewDataUrl ? (
-            <img src={product.previewDataUrl} alt={product.title} className="absolute inset-0 w-full h-full object-cover" />
+      <div className="flex flex-col">
+        {/* Preview full ảnh theo tỷ lệ sản phẩm */}
+        <div className="relative overflow-hidden rounded-t-3xl w-full"
+          style={{ aspectRatio: product.ratio || '16/9', background: product.images?.length || product.previewDataUrl ? '#0a0a10' : product.gradient }}>
+          {(product.images?.length > 0 || product.previewDataUrl) ? (
+            <CardSlideshow
+              images={product.images?.length > 0 ? product.images : [product.previewDataUrl]}
+              ratio={product.ratio || '16/9'}
+              gradient={product.gradient}
+              icon={product.icon}
+              type={product.type}
+              isHovered={true}
+            />
           ) : (
             <>
               <div className="absolute inset-0"
@@ -578,12 +585,11 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
               </span>
             )}
           </div>
-          {/* Shine bottom */}
           <div className="absolute bottom-0 inset-x-0 h-20 pointer-events-none"
-            style={{ background: 'linear-gradient(180deg, transparent, rgba(7,7,16,0.5))' }} />
+            style={{ background: 'linear-gradient(180deg, transparent, rgba(7,7,16,0.7))' }} />
         </div>
 
-        {/* Info */}
+        {/* Info bên dưới */}
         <div className="p-6 flex flex-col gap-4">
           <div>
             <p className="text-[10px] uppercase tracking-widest font-semibold text-white/30 mb-1">
@@ -738,17 +744,7 @@ export default function ShopPage() {
           <p className="text-sm text-white/35 mt-1">{filtered.length} sản phẩm</p>
         </div>
 
-        {/* Search */}
-        <div className="relative sm:w-60">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Tìm kiếm sản phẩm..."
-            className="w-full pl-8.5 pr-4 py-2.5 rounded-xl text-sm text-white/80 placeholder-white/25 outline-none transition-all"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)' }}
-            onFocus={e => e.target.style.borderColor = 'rgba(110,75,255,0.55)'}
-            onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.09)'}
-          />
-        </div>
+
       </div>
 
       {/* ── Filters ── */}
