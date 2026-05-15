@@ -4,7 +4,7 @@ import {
   ShoppingBag, Gift, Scissors, FolderOpen, Layers,
   Coins, ArrowRight, Zap, Star, Sparkles,
   Download, TrendingUp, LayoutDashboard,
-  Clock, Activity, CheckCircle2,
+  Clock, Activity, CheckCircle2, LayoutGrid, MessageSquare,
 } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
@@ -158,6 +158,7 @@ const QUICK_ACTIONS = [
   { to: '/shop',       icon: ShoppingBag, label: 'Cửa hàng',   desc: '120+ tài nguyên thiết kế cao cấp',   gradient: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', badge: null       },
   { to: '/gift',       icon: Gift,        label: 'Hộp quà',    desc: 'Voucher & mã giảm giá hàng ngày',    gradient: 'linear-gradient(135deg,#10b981,#2bf2c0)', badge: 'HOT'      },
   { to: '/remove-bg',  icon: Scissors,    label: 'Xóa nền AI', desc: 'Tách nền ảnh tự động chỉ 1 giây',    gradient: 'linear-gradient(135deg,#0ea5e9,#4dd0ff)', badge: 'AI'       },
+  { to: '/collage',    icon: LayoutGrid,  label: 'Ghép ảnh',   desc: 'Ghép nhiều ảnh thành collage đẹp',   gradient: 'linear-gradient(135deg,#ec4899,#8b5cf6)', badge: 'NEW'      },
   { to: '/psd-editor', icon: Layers,      label: 'PSD Editor', desc: 'Chỉnh sửa PSD trực tiếp trên web',   gradient: 'linear-gradient(135deg,#f59e0b,#ef4444)', badge: 'NEW', adminOnly: true },
   { to: '/resources',  icon: FolderOpen,  label: 'Tài nguyên', desc: '10,000+ PSD, icon, mockup miễn phí', gradient: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', badge: null       },
 ]
@@ -167,6 +168,13 @@ const FEATURES = [
   { icon: '✂️',  title: 'Xóa nền tự động',    desc: 'Tách nền ảnh chỉ trong 1 giây. Hỗ trợ PNG, JPG. Không cần Photoshop.',                       link: '/remove-bg',  accent: '#0ea5e9' },
   { icon: '📦',  title: 'Kho tài nguyên',      desc: '10,000+ file PSD, icon, mockup miễn phí. Tải về và dùng ngay cho dự án của bạn.',             link: '/resources',  accent: '#8b5cf6' },
   { icon: '🎁',  title: 'Phần thưởng hàng ngày', desc: 'Nhận voucher, coin và ưu đãi hàng ngày. Dùng để mua sản phẩm hoặc xuất ảnh không giới hạn.', link: '/gift',       accent: '#10b981' },
+]
+
+const REVIEWS = [
+  { id: 1, name: 'Nguyễn Minh Khoa', avatar: 'K', color: '#6e4bff', rating: 5, text: 'PSD Editor cực kỳ mượt, tôi đã dùng để tạo thumbnail YouTube và kết quả vượt mong đợi!', time: '2 ngày trước', product: 'PSD Editor' },
+  { id: 2, name: 'Trần Thu Hà',      avatar: 'H', color: '#0ea5e9', rating: 5, text: 'Ghép ảnh nhanh và đẹp, tính năng collage rất tiện lợi. Giao diện tối modern rất thích.', time: '5 ngày trước', product: 'Ghép ảnh' },
+  { id: 3, name: 'Lê Văn Dũng',     avatar: 'D', color: '#10b981', rating: 4, text: 'Kho tài nguyên phong phú, tải về dễ dàng. Sẽ ủng hộ lâu dài!', time: '1 tuần trước', product: 'Tài nguyên' },
+  { id: 4, name: 'Phạm Bảo Châu',   avatar: 'C', color: '#f59e0b', rating: 5, text: 'Xóa nền AI siêu nhanh chỉ 1 giây, chất lượng cao hơn nhiều tool miễn phí khác.', time: '2 tuần trước', product: 'Xóa nền AI' },
 ]
 
 /* ─── MAIN COMPONENT ─────────────────────────────────────── */
@@ -280,7 +288,7 @@ export default function Dashboard() {
             </div>
             <h2 className="font-display text-base font-semibold text-white">Truy cập nhanh</h2>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             {QUICK_ACTIONS.map(({ to, icon, label, desc, gradient, badge, adminOnly }, i) => (
               (!adminOnly || isAdmin) && (
                 <motion.div key={to}
@@ -372,6 +380,56 @@ export default function Dashboard() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
           {FEATURES.map((f, i) => (
             <FeatureCard key={f.title} {...f} delay={i * 0.08 + 0.25} />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Reviews ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-5">
+          <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
+            <MessageSquare size={13} className="text-rose-400" />
+          </div>
+          <h2 className="font-display text-base font-semibold text-white">Đánh giá từ cộng đồng</h2>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {REVIEWS.map((r, i) => (
+            <motion.div
+              key={r.id}
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 + 0.3, ease: [0.22, 0.8, 0.22, 1] }}
+              className="relative rounded-2xl p-4 flex flex-col gap-3 group hover:-translate-y-1 transition-all duration-300"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                backdropFilter: 'blur(16px)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+              }}
+            >
+              {/* Top accent */}
+              <div className="absolute inset-x-0 top-0 h-0.5 rounded-t-2xl opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: `linear-gradient(90deg, transparent, ${r.color}, transparent)` }} />
+              {/* Stars */}
+              <div className="flex items-center gap-0.5">
+                {[...Array(5)].map((_, idx) => (
+                  <Star key={idx} size={11}
+                    className={idx < r.rating ? 'text-yellow-400 fill-yellow-400' : 'text-white/20'} />
+                ))}
+              </div>
+              {/* Review text */}
+              <p className="text-xs text-white/65 leading-relaxed flex-1">"{r.text}"</p>
+              {/* Footer */}
+              <div className="flex items-center gap-2 pt-1 border-t border-white/[0.06]">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: `${r.color}25`, color: r.color, border: `1px solid ${r.color}40` }}>
+                  {r.avatar}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-white/80 truncate">{r.name}</p>
+                  <p className="text-[10px] text-white/35 truncate">{r.product} · {r.time}</p>
+                </div>
+              </div>
+            </motion.div>
           ))}
         </div>
       </div>

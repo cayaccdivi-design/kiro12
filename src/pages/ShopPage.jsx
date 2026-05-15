@@ -518,6 +518,8 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
   const navigate = useNavigate()
   const owned = product ? isOwned(product.id) : false
   const [inputCode, setInputCode] = useState('')
+  const [modalSlide, setModalSlide] = useState(0)
+  const [modalHovered, setModalHovered] = useState(false)
 
   const appliedDiscount = !!(inputCode && product?.discountCode && inputCode.toUpperCase() === product.discountCode.toUpperCase() && product?.discountPercent > 0)
   const finalPrice = appliedDiscount ? Math.round(product.price * (1 - product.discountPercent / 100)) : (product?.price ?? 0)
@@ -543,54 +545,72 @@ function ProductModal({ product, onClose, isAdmin, onEditClick, isStoreProduct }
 
   if (!product) return null
 
+  const images = product.images?.length > 0 ? product.images : product.previewDataUrl ? [product.previewDataUrl] : []
+
   return (
-    <Modal open={!!product} onClose={onClose} size="lg">
-      <div className="flex flex-col">
-        {/* Preview full ảnh theo tỷ lệ sản phẩm */}
-        <div className="relative overflow-hidden rounded-t-3xl w-full"
-          style={{ aspectRatio: product.ratio || '16/9', background: product.images?.length || product.previewDataUrl ? '#0a0a10' : product.gradient }}>
-          {(product.images?.length > 0 || product.previewDataUrl) ? (
-            <CardSlideshow
-              images={product.images?.length > 0 ? product.images : [product.previewDataUrl]}
-              ratio={product.ratio || '16/9'}
-              gradient={product.gradient}
-              icon={product.icon}
-              type={product.type}
-              isHovered={true}
-            />
-          ) : (
-            <>
-              <div className="absolute inset-0"
-                style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.2), transparent 60%)' }} />
-              {product.type === 'animated' && (
+    <Modal open={!!product} onClose={onClose} size="xl">
+      <div className="grid md:grid-cols-[1.2fr_1fr] min-h-0">
+        {/* ── Cột trái: Preview ảnh lớn + thumbnail strip ── */}
+        <div className="flex flex-col rounded-tl-3xl rounded-tr-3xl md:rounded-tr-none md:rounded-bl-3xl overflow-hidden"
+          style={{ background: '#07070f' }}>
+          {/* Main slideshow */}
+          <div
+            className="relative flex-1 min-h-[200px]"
+            style={{ aspectRatio: product.ratio || '16/9' }}
+            onMouseEnter={() => setModalHovered(true)}
+            onMouseLeave={() => setModalHovered(false)}
+          >
+            {images.length > 0 ? (
+              <CardSlideshow
+                images={images}
+                ratio={product.ratio || '16/9'}
+                gradient={product.gradient}
+                icon={product.icon}
+                type={product.type}
+                isHovered={modalHovered}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center"
+                style={{ background: product.gradient }}>
                 <div className="absolute inset-0"
-                  style={{ background: product.gradient, backgroundSize: '220% 220%', animation: 'gradient 5s ease infinite', opacity: 0.55 }} />
-              )}
-              <div className="absolute inset-0 flex items-center justify-center select-none">
-                <span className="text-8xl font-bold text-white/75"
-                  style={{ textShadow: '0 6px 28px rgba(0,0,0,0.5)' }}>
-                  {product.icon}
-                </span>
+                  style={{ background: 'radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.2), transparent 60%)' }} />
+                <span className="text-8xl font-bold text-white/75 z-10"
+                  style={{ textShadow: '0 6px 28px rgba(0,0,0,0.5)' }}>{product.icon}</span>
               </div>
-            </>
-          )}
-          <div className="absolute top-4 left-4 flex gap-2 z-10">
-            <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md"
-              style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
-              {product.tag}
-            </span>
-            {product.type === 'animated' && (
-              <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md bg-brand-500/75 text-white">
-                ✦ Động
-              </span>
             )}
+            <div className="absolute top-4 left-4 flex gap-2 z-10">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md"
+                style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
+                {product.tag}
+              </span>
+              {product.type === 'animated' && (
+                <span className="px-2.5 py-1 rounded-lg text-xs font-bold backdrop-blur-md bg-brand-500/75 text-white">✦ Động</span>
+              )}
+            </div>
           </div>
-          <div className="absolute bottom-0 inset-x-0 h-20 pointer-events-none"
-            style={{ background: 'linear-gradient(180deg, transparent, rgba(7,7,16,0.7))' }} />
+          {/* Thumbnail strip */}
+          {images.length > 1 && (
+            <div className="flex gap-2 p-3 overflow-x-auto"
+              style={{ background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {images.map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setModalSlide(i)}
+                  className="flex-shrink-0 rounded-lg overflow-hidden transition-all duration-200"
+                  style={{
+                    width: 56, height: 40,
+                    border: i === modalSlide ? '2px solid rgba(110,75,255,0.8)' : '2px solid rgba(255,255,255,0.1)',
+                    boxShadow: i === modalSlide ? '0 0 10px rgba(110,75,255,0.4)' : 'none',
+                  }}>
+                  <img src={img} alt={`thumb-${i}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Info bên dưới */}
-        <div className="p-6 flex flex-col gap-4">
+        {/* ── Cột phải: Info ── */}
+        <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[80vh]">
           <div>
             <p className="text-[10px] uppercase tracking-widest font-semibold text-white/30 mb-1">
               {product.category.replace(/-/g, ' ')}

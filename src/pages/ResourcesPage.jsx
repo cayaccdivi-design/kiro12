@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FolderOpen, Search, Download, Heart, Eye, Filter, Grid3X3, List, Star, ExternalLink, Image, FileType, Box, Cpu, Layers } from 'lucide-react'
+import { FolderOpen, Download, Heart, Eye, Filter, Grid3X3, List, Star, ExternalLink, Image, FileType, Box, Cpu, Layers } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 
 const CATEGORIES = [
@@ -120,7 +120,6 @@ function ResourceCard({ item, viewMode, onDownload, onPreview }) {
 
 export default function ResourcesPage() {
   const [cat, setCat] = useState('all')
-  const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState('grid')
   const [sort, setSort] = useState('popular')
   const { toast } = useAppStore()
@@ -128,15 +127,13 @@ export default function ResourcesPage() {
   const filtered = useMemo(() => {
     let list = RESOURCES.filter(r => {
       if (cat !== 'all' && r.category !== cat) return false
-      if (search && !r.title.toLowerCase().includes(search.toLowerCase()) &&
-          !r.tags.some(t => t.includes(search.toLowerCase()))) return false
       return true
     })
     if (sort === 'popular') list = [...list].sort((a, b) => b.downloads - a.downloads)
     if (sort === 'newest') list = [...list].sort((a, b) => b.id.localeCompare(a.id))
     if (sort === 'rating') list = [...list].sort((a, b) => b.rating - a.rating)
     return list
-  }, [cat, search, sort])
+  }, [cat, sort])
 
   const handleDownload = (item) => {
     if (item.free) {
@@ -182,15 +179,6 @@ export default function ResourcesPage() {
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Tìm tài nguyên, tags..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-white placeholder-white/25 outline-none transition-all"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-            onFocus={e => e.target.style.borderColor = 'rgba(110,75,255,0.5)'}
-            onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'} />
-        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <select value={sort} onChange={e => setSort(e.target.value)}
@@ -243,7 +231,7 @@ export default function ResourcesPage() {
             className="text-center py-20 text-white/30">
             <FolderOpen size={40} className="mx-auto mb-3 opacity-30" />
             <p className="text-sm">Không tìm thấy tài nguyên phù hợp</p>
-            <button onClick={() => { setSearch(''); setCat('all') }}
+            <button onClick={() => { setCat('all') }}
               className="mt-3 text-xs text-brand-400 hover:text-brand-300 transition-colors">
               Xóa bộ lọc
             </button>
