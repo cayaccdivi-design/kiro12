@@ -25,7 +25,7 @@ export default function App() {
         <Route path="/shop" element={<ShopPage />} />
         <Route path="/gift" element={<GiftPage />} />
         <Route path="/remove-bg" element={<RemoveBgPage />} />
-        <Route path="/psd-editor" element={<PsdEditorPage />} />
+        <Route path="/psd-editor" element={<ProtectedRoute><PsdEditorPage /></ProtectedRoute>} />
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/topup" element={
           <ProtectedRoute><TopupPage /></ProtectedRoute>

@@ -58,7 +58,7 @@ function Spinner({ label }) {
 }
 
 function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
-  const TypeIcon = layer.type === 'text' ? Type : layer.type === 'group' ? Layers : ImageIcon
+  const TypeIcon = layer.type === 'text' ? Type : ImageIcon
   return (
     <motion.div
       layout
@@ -323,9 +323,6 @@ function RightPanel({ show, onClose, selectedLayer, onLayerChange, onResetLayer,
             {selectedLayer.type === 'image' && (
               <ImageControls layer={selectedLayer} onChange={onLayerChange} onReset={onResetLayer} />
             )}
-            {selectedLayer.type === 'group' && (
-              <p className="text-xs text-white/30 text-center py-4">Group layer - visibility only</p>
-            )}
           </div>
         )}
       </div>
@@ -572,6 +569,7 @@ export default function PsdEditorPage() {
   const stageRef = useRef(null)
   const transformerRef = useRef(null)
   const fileInputRef = useRef(null)
+  const watermarkRef = useRef(null)
 
   // Responsive detection
   useEffect(() => {
@@ -582,7 +580,6 @@ export default function PsdEditorPage() {
       else { setShowLeft(true); setShowRight(true) }
     }
     window.addEventListener('resize', onResize)
-    onResize()
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
@@ -648,7 +645,7 @@ export default function PsdEditorPage() {
 
         setLoadingMsg(`Processing layer ${i + 1}/${total}: ${node.name || 'Unnamed'}`)
 
-        const isText = node.text != null
+        const isText = node.text != null && node.text !== ''
         let dataUrl = null
         let originalDataUrl = null
 
@@ -673,11 +670,11 @@ export default function PsdEditorPage() {
           width: node.width,
           height: node.height,
           // text props
-          textContent: isText ? (node.text?.content || '') : undefined,
-          originalTextContent: isText ? (node.text?.content || '') : undefined,
-          fontFamily: isText ? (node.text?.font?.names?.[0] || 'Inter') : undefined,
-          fontSize: isText ? (node.text?.font?.sizes?.[0] || 16) : undefined,
-          color: '#ffffff',
+          textContent: isText ? (typeof node.text === 'string' ? node.text : (node.text?.content ?? '')) : undefined,
+          originalTextContent: isText ? (typeof node.text === 'string' ? node.text : (node.text?.content ?? '')) : undefined,
+          fontFamily: isText ? (node.text?.font?.names?.[0] || node.textProperties?.runData?.[0]?.fontName || 'Inter') : undefined,
+          fontSize: isText ? (node.text?.font?.sizes?.[0] || node.textProperties?.runData?.[0]?.fontSize || 16) : undefined,
+          color: '#ffffff', // TODO: parse from node.textProperties EngineData (non-trivial in v0.4.x)
           bold: false,
           italic: false,
           // image props
@@ -781,18 +778,22 @@ export default function PsdEditorPage() {
   const handleExport = async () => {
     if (!stageRef.current || !psdMeta) return
     try {
-      // hide watermark temporarily
-      setShowWatermark(false)
-      // wait one frame for re-render
-      await new Promise(r => setTimeout(r, 80))
+      // Hide watermark directly via Konva node (bypasses React render cycle)
+      if (watermarkRef.current) {
+        watermarkRef.current.hide()
+        stageRef.current.batchDraw()
+      }
       const dataUrl = stageRef.current.toDataURL({
         mimeType: exportFormat === 'jpg' ? 'image/jpeg' : 'image/png',
         quality: exportQuality,
         pixelRatio: 2,
       })
-      // restore watermark
-      setShowWatermark(true)
-      // trigger download
+      // Restore watermark
+      if (watermarkRef.current) {
+        watermarkRef.current.show()
+        stageRef.current.batchDraw()
+      }
+      // Trigger download
       const a = document.createElement('a')
       a.href = dataUrl
       a.download = `nova-psd-export-${Date.now()}.${exportFormat}`
@@ -802,7 +803,10 @@ export default function PsdEditorPage() {
       setShowExportModal(false)
       toast('Xuất ảnh thành công!', 'success', 'Export')
     } catch (err) {
-      setShowWatermark(true)
+      if (watermarkRef.current) {
+        watermarkRef.current.show()
+        stageRef.current?.batchDraw()
+      }
       toast('Lỗi khi xuất ảnh. Vui lòng thử lại.', 'error', 'Export lỗi')
     }
   }
@@ -840,6 +844,18 @@ export default function PsdEditorPage() {
         isLg={isLg}
         hasPaid={hasPaid}
       />
+
+      {/* Export session active banner */}
+      {hasPaid && psdMeta && (
+        <div className="flex items-center gap-2 px-3 py-1.5 text-xs"
+          style={{ background: 'rgba(43,242,192,0.08)', borderBottom: '1px solid rgba(43,242,192,0.15)' }}>
+          <Download size={12} className="text-teal-400" />
+          <span className="text-teal-300">Export session active — do not navigate away.</span>
+          <button onClick={() => setShowExportModal(true)} className="ml-auto text-teal-400 underline font-medium">
+            Export now
+          </button>
+        </div>
+      )}
 
       {/* Editor body */}
       <div className="flex flex-1 min-h-0 relative">
@@ -956,6 +972,7 @@ export default function PsdEditorPage() {
 
                   {/* Watermark */}
                   <KonvaText
+                    ref={watermarkRef}
                     text="NOVA AI STUDIO"
                     x={psdMeta.width / 2}
                     y={psdMeta.height / 2}
