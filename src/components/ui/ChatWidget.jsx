@@ -19,7 +19,7 @@ export default function ChatWidget() {
 
   const handleSend = () => {
     if (input.trim()) {
-      sendMessage(user, input)
+      sendMessage(user, input, isAdmin)
       setInput('')
     }
   }

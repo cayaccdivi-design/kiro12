@@ -11,7 +11,7 @@ export const useChatStore = create((set, get) => ({
   isOpen: false,
   unread: 0,
 
-  sendMessage: (user, text) => {
+  sendMessage: (user, text, isAdmin = false) => {
     if (!text.trim() || !user) return
     const msg = {
       id: Date.now().toString(),
@@ -20,11 +20,11 @@ export const useChatStore = create((set, get) => ({
       userAvatar: user.avatar,
       text: text.trim(),
       createdAt: new Date().toISOString(),
-      isAdmin: user.email === 'finnlive246@gmail.com',
+      isAdmin,
     }
     const updated = [...get().messages, msg].slice(-200)
     try { localStorage.setItem(CHAT_KEY, JSON.stringify(updated)) } catch {}
-    set(s => ({ messages: updated, unread: s.isOpen ? 0 : s.unread + 1 }))
+    set(s => ({ messages: updated, unread: s.isOpen ? 0 : s.unread + (msg.userId !== user.id ? 1 : 0) }))
   },
 
   deleteMessage: (id) => {
@@ -46,7 +46,7 @@ export const useChatStore = create((set, get) => ({
     }
     const updated = [...get().messages, msg].slice(-200)
     try { localStorage.setItem(CHAT_KEY, JSON.stringify(updated)) } catch {}
-    set({ messages: updated })
+    set(s => ({ messages: updated, unread: s.isOpen ? 0 : s.unread + 1 }))
   },
 
   openChat: () => set({ isOpen: true, unread: 0 }),
