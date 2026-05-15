@@ -121,9 +121,10 @@ function FeatureCard({ icon, title, desc, delay, link, accent }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, ease: [0.22, 0.8, 0.22, 1] }}>
+      transition={{ delay, ease: [0.22, 0.8, 0.22, 1] }}
+      className="h-full">
       <Wrapper to={link}
-        className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-3 group transition-all duration-300 hover:-translate-y-1 block"
+        className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-3 group transition-all duration-300 hover:-translate-y-1 block h-full"
         style={{
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid rgba(255,255,255,0.07)',
@@ -146,12 +147,6 @@ function FeatureCard({ icon, title, desc, delay, link, accent }) {
             <h3 className="font-semibold text-white text-sm mb-1">{title}</h3>
             <p className="text-xs text-white/45 leading-relaxed">{desc}</p>
           </div>
-          {link && (
-            <div className="mt-auto flex items-center gap-1 text-[11px] font-medium transition-colors"
-              style={{ color: accentRgb }}>
-              Khám phá <ArrowRight size={11} />
-            </div>
-          )}
         </div>
       </Wrapper>
     </motion.div>
@@ -160,10 +155,11 @@ function FeatureCard({ icon, title, desc, delay, link, accent }) {
 
 /* ─── QUICK_ACTIONS ──────────────────────────────────────── */
 const QUICK_ACTIONS = [
-  { to: '/shop',       icon: ShoppingBag, label: 'Cửa hàng',   desc: '120+ tài nguyên thiết kế cao cấp',   gradient: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', badge: null      },
-  { to: '/gift',       icon: Gift,        label: 'Hộp quà',    desc: 'Voucher & mã giảm giá hàng ngày',    gradient: 'linear-gradient(135deg,#10b981,#2bf2c0)', badge: 'HOT'     },
+  { to: '/shop',       icon: ShoppingBag, label: 'Cửa hàng',   desc: '120+ tài nguyên thiết kế cao cấp',   gradient: 'linear-gradient(135deg,#6e4bff,#4dd0ff)', badge: null       },
+  { to: '/gift',       icon: Gift,        label: 'Hộp quà',    desc: 'Voucher & mã giảm giá hàng ngày',    gradient: 'linear-gradient(135deg,#10b981,#2bf2c0)', badge: 'HOT'      },
+  { to: '/remove-bg',  icon: Scissors,    label: 'Xóa nền AI', desc: 'Tách nền ảnh tự động chỉ 1 giây',    gradient: 'linear-gradient(135deg,#0ea5e9,#4dd0ff)', badge: 'AI'       },
   { to: '/psd-editor', icon: Layers,      label: 'PSD Editor', desc: 'Chỉnh sửa PSD trực tiếp trên web',   gradient: 'linear-gradient(135deg,#f59e0b,#ef4444)', badge: 'NEW', adminOnly: true },
-  { to: '/resources',  icon: FolderOpen,  label: 'Tài nguyên', desc: '10,000+ PSD, icon, mockup miễn phí', gradient: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', badge: null      },
+  { to: '/resources',  icon: FolderOpen,  label: 'Tài nguyên', desc: '10,000+ PSD, icon, mockup miễn phí', gradient: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', badge: null       },
 ]
 
 const FEATURES = [
@@ -284,7 +280,7 @@ export default function Dashboard() {
             </div>
             <h2 className="font-display text-base font-semibold text-white">Truy cập nhanh</h2>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {QUICK_ACTIONS.map(({ to, icon, label, desc, gradient, badge, adminOnly }, i) => (
               (!adminOnly || isAdmin) && (
                 <motion.div key={to}
@@ -373,7 +369,7 @@ export default function Dashboard() {
           </div>
           <h2 className="font-display text-base font-semibold text-white">Tính năng nổi bật</h2>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
           {FEATURES.map((f, i) => (
             <FeatureCard key={f.title} {...f} delay={i * 0.08 + 0.25} />
           ))}
