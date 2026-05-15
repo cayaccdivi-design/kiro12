@@ -23,8 +23,9 @@ function useKonvaImage(dataUrl) {
 }
 
 // ── FieldInput component ───────────────────────────────────────────────────────
-function FieldInput({ field, value, onChange }) {
+function FieldInput({ field, value, onChange, textStyle, onTextStyleChange }) {
   const fileRef = useRef(null)
+  const [showStyle, setShowStyle] = useState(false)
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
@@ -47,11 +48,21 @@ function FieldInput({ field, value, onChange }) {
   }
 
   if (field.type === 'text') {
+    const FONT_FAMILIES = ['Inter', 'Arial', 'Georgia', 'Times New Roman', 'Verdana', 'Impact']
+    const ts = textStyle || {}
     return (
       <div className="space-y-1.5">
-        <label className="text-[11px] text-white/40 uppercase tracking-wider flex items-center gap-1.5 block">
-          <Type size={11} className="text-brand-400" /> {field.label}
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+            <Type size={11} className="text-brand-400" /> {field.label}
+          </label>
+          <button
+            onClick={() => setShowStyle(v => !v)}
+            className="text-[10px] px-2 py-0.5 rounded-lg transition-colors"
+            style={{ background: showStyle ? 'rgba(110,75,255,0.2)' : 'rgba(255,255,255,0.05)', color: showStyle ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.3)' }}>
+            {showStyle ? 'Ẩn style' : 'Style ↓'}
+          </button>
+        </div>
         <textarea
           value={value || ''}
           onChange={e => onChange(e.target.value)}
@@ -60,6 +71,61 @@ function FieldInput({ field, value, onChange }) {
           onFocus={e => e.target.style.borderColor = 'rgba(110,75,255,0.55)'}
           onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.09)'}
         />
+        {showStyle && onTextStyleChange && (
+          <div className="space-y-2 pt-1">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[10px] text-white/30 mb-1">Font</p>
+                <select
+                  value={ts.fontFamily || 'Inter'}
+                  onChange={e => onTextStyleChange({ fontFamily: e.target.value })}
+                  className="w-full text-[11px] rounded-lg px-2 py-1.5 text-white/70 outline-none"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                  {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+              <div>
+                <p className="text-[10px] text-white/30 mb-1">Cỡ chữ</p>
+                <input
+                  type="number" min={8} max={200}
+                  value={ts.fontSize || 16}
+                  onChange={e => onTextStyleChange({ fontSize: Number(e.target.value) })}
+                  className="w-full text-[11px] rounded-lg px-2 py-1.5 text-white/70 outline-none"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <p className="text-[10px] text-white/30 mb-1">Màu chữ</p>
+                <input
+                  type="color"
+                  value={ts.color || '#ffffff'}
+                  onChange={e => onTextStyleChange({ color: e.target.value })}
+                  className="w-full h-8 rounded-lg cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)' }}
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-white/30 mb-1">Style</p>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => onTextStyleChange({ bold: !ts.bold })}
+                    className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
+                    style={{ background: ts.bold ? 'rgba(110,75,255,0.3)' : 'rgba(255,255,255,0.06)', color: ts.bold ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                    B
+                  </button>
+                  <button
+                    onClick={() => onTextStyleChange({ italic: !ts.italic })}
+                    className="w-8 h-8 rounded-lg text-xs italic transition-all"
+                    style={{ background: ts.italic ? 'rgba(110,75,255,0.3)' : 'rgba(255,255,255,0.06)', color: ts.italic ? 'rgba(167,139,250,1)' : 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                    I
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -115,9 +181,12 @@ function FieldInput({ field, value, onChange }) {
 }
 
 // ── KonvaOverlayText ───────────────────────────────────────────────────────────
-function KonvaOverlayText({ field, value, scale, isSelected, onSelect, onDragEnd }) {
+function KonvaOverlayText({ field, value, scale, isSelected, onSelect, onDragEnd, textStyle }) {
   const nodeRef = useRef(null)
-  const fontStyle = [field.bold ? 'bold' : '', field.italic ? 'italic' : ''].filter(Boolean).join(' ') || 'normal'
+  const fontStyle = [
+    (textStyle?.bold ?? field.bold) ? 'bold' : '',
+    (textStyle?.italic ?? field.italic) ? 'italic' : ''
+  ].filter(Boolean).join(' ') || 'normal'
   if (!value) return null
   return (
     <KonvaText
@@ -126,9 +195,9 @@ function KonvaOverlayText({ field, value, scale, isSelected, onSelect, onDragEnd
       x={(field.x || 0) * scale}
       y={(field.y || 0) * scale}
       width={(field.width || 200) * scale}
-      fontFamily={field.fontFamily || 'Inter'}
-      fontSize={(field.fontSize || 16) * scale}
-      fill={field.color || '#ffffff'}
+      fontFamily={textStyle?.fontFamily || field.fontFamily || 'Inter'}
+      fontSize={((textStyle?.fontSize) || field.fontSize || 16) * scale}
+      fill={textStyle?.color || field.color || '#ffffff'}
       fontStyle={fontStyle}
       onClick={() => onSelect && onSelect(field.role)}
       onTap={() => onSelect && onSelect(field.role)}
@@ -220,6 +289,10 @@ export default function CustomerEditorPage() {
   const [containerSize, setContainerSize] = useState({ w: 800, h: 450 })
   const [selectedRole, setSelectedRole] = useState(null)
   const [overrides, setOverrides] = useState({})
+  const [textStyles, setTextStyles] = useState({}) // { [role]: { fontFamily, fontSize, color, bold, italic } }
+  const handleTextStyleChange = useCallback((role, changes) => {
+    setTextStyles(prev => ({ ...prev, [role]: { ...(prev[role] || {}), ...changes } }))
+  }, [])
 
   const [customValues, setCustomValues] = useState(() => {
     if (!product?.editableFields) return {}
@@ -398,6 +471,8 @@ export default function CustomerEditorPage() {
                     field={field}
                     value={customValues[field.role] ?? field.defaultValue ?? ''}
                     onChange={val => handleFieldChange(field.role, val)}
+                    textStyle={textStyles[field.role]}
+                    onTextStyleChange={field.type === 'text' ? (changes) => handleTextStyleChange(field.role, changes) : undefined}
                   />
                 </motion.div>
               ))
@@ -444,6 +519,7 @@ export default function CustomerEditorPage() {
                         isSelected={selectedRole === field.role}
                         onSelect={setSelectedRole}
                         onDragEnd={handleOverrideDragEnd}
+                        textStyle={textStyles[field.role]}
                       />
                     )
                   }
