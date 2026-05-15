@@ -9,6 +9,7 @@ import {
   PanelLeft, PanelRight, Download, Store
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { detectLayerRole } from '../utils/layerNaming'
 import { useAuthStore } from '../store/useAuthStore'
 import { useShopStore } from '../store/useShopStore'
 import { useAppStore } from '../store/useAppStore'
@@ -105,6 +106,27 @@ function LayerRow({ layer, selected, onSelect, onToggleVisible }) {
         />
       )}
       <span className="truncate flex-1 text-xs">{layer.name}</span>
+      {(() => {
+        const role = detectLayerRole(layer.name)
+        if (!role) return null
+        return (
+          <span
+            className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{
+              background: role.type === 'text' ? 'rgba(110,75,255,0.25)' : 'rgba(77,208,255,0.2)',
+              border: role.type === 'text' ? '1px solid rgba(110,75,255,0.4)' : '1px solid rgba(77,208,255,0.35)',
+              color: role.type === 'text' ? 'rgba(167,139,250,1)' : 'rgba(77,208,255,1)',
+              maxWidth: 72,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={role.label}
+          >
+            {role.label}
+          </span>
+        )
+      })()}
     </motion.div>
   )
 }
@@ -472,7 +494,7 @@ const CATEGORIES = [
   { value: 'banner-discord', label: 'Banner Discord' },
 ]
 
-function PublishModal({ open, onClose, form, setForm, onSubmit }) {
+function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCount }) {
   const inputStyle = {
     background: 'rgba(255,255,255,0.05)',
     border: '1px solid rgba(255,255,255,0.09)',
@@ -597,6 +619,13 @@ function PublishModal({ open, onClose, form, setForm, onSubmit }) {
           </div>
         </div>
 
+        {editableFieldCount === 0 && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs"
+            style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)', color: 'rgba(253,224,71,0.9)' }}>
+            <span className="flex-shrink-0 mt-0.5">⚠️</span>
+            <span>Không tìm thấy layer chuẩn. Sản phẩm sẽ đăng không có trường chỉnh sửa. Đặt tên layer đúng quy chuẩn: <code className="bg-black/30 px-1 rounded text-[10px]">text_1, avt_png, logo...</code></span>
+          </div>
+        )}
         <div className="flex gap-3 pt-2">
           <button onClick={onClose}
             className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
@@ -957,6 +986,34 @@ export default function PsdEditorPage() {
     if (!stageRef.current || !psdMeta) return
     const previewDataUrl = stageRef.current.toDataURL({ pixelRatio: 1 })
     const ratio = detectRatio(psdMeta.width, psdMeta.height)
+    // Extract editable fields from named layers
+    const editableFields = layers
+      .map(l => {
+        const role = detectLayerRole(l.name)
+        if (!role) return null
+        return {
+          role: role.role,
+          label: role.label,
+          type: role.type,
+          shape: role.shape || 'rect',
+          defaultValue: l.type === 'text' ? (l.textContent || '') : null,
+          x: l.left,
+          y: l.top,
+          width: l.width,
+          height: l.height,
+          fontSize: l.fontSize || 16,
+          fontFamily: l.fontFamily || 'Inter',
+          color: l.color || '#ffffff',
+          bold: l.bold || false,
+          italic: l.italic || false,
+        }
+      })
+      .filter(Boolean)
+    if (editableFields.length === 0) {
+      // No named layers found - product will be published without editable fields
+      // Admin should name layers: text_1, text_2, text_3, title_logo, text_logo, nvat_png, avt_png, logo
+      console.warn('[Nova] No named layers found - product published without editable fields. Layer naming convention: text_1, text_2, text_3, title_logo, text_logo, nvat_png, avt_png, logo')
+    }
     addProduct({
       ...publishForm,
       previewDataUrl,
@@ -966,6 +1023,7 @@ export default function PsdEditorPage() {
       psdFileName: psdFile?.name || '',
       sold: 0,
       createdAt: new Date().toISOString(),
+      editableFields,
     })
     toast('Đã đăng sản phẩm lên cửa hàng!', 'success', 'Publish')
     setShowPublishModal(false)
@@ -1302,6 +1360,7 @@ export default function PsdEditorPage() {
         form={publishForm}
         setForm={setPublishForm}
         onSubmit={handlePublish}
+        editableFieldCount={layers.filter(l => !!detectLayerRole(l.name)).length}
       />
 
       {/* Export Format Modal */}

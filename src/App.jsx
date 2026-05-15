@@ -8,6 +8,7 @@ import RemoveBgPage from './pages/RemoveBgPage'
 import PsdEditorPage from './pages/PsdEditorPage'
 import ResourcesPage from './pages/ResourcesPage'
 import TopupPage from './pages/TopupPage'
+import CustomerEditorPage from './pages/CustomerEditorPage'
 import { useAuthStore } from './store/useAuthStore'
 
 function ProtectedRoute({ children }) {
@@ -31,6 +32,7 @@ export default function App() {
           <ProtectedRoute><TopupPage /></ProtectedRoute>
         } />
       </Route>
+      <Route path="/editor/:productId" element={<ProtectedRoute><CustomerEditorPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
