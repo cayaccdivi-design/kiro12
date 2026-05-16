@@ -1,47 +1,57 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
-import { Stage, Layer, Image as KonvaImage, Text as KonvaText, Rect, Transformer } from 'react-konva'
+import {
+  Stage, Layer, Group, Image as KonvaImage, Text as KonvaText, Rect, Transformer,
+} from 'react-konva'
 
-// Hook: load a dataUrl into an HTMLImageElement once.
+// ---------------------------------------------------------------------------
+// useImage – cached HTMLImageElement loader for data URLs.
+// ---------------------------------------------------------------------------
 function useImage(dataUrl) {
   const [img, setImg] = useState(null)
   useEffect(() => {
     if (!dataUrl) { setImg(null); return }
+    let cancelled = false
     const i = new Image()
     i.crossOrigin = 'anonymous'
-    i.onload = () => setImg(i)
+    i.onload = () => { if (!cancelled) setImg(i) }
     i.src = dataUrl
+    return () => { cancelled = true }
   }, [dataUrl])
   return img
 }
 
-// One PSD layer rendered to Konva. Mode is auto-selected:
-//   - text + isEdited        => live Konva Text (full effect controls)
-//   - image + isEdited       => live KonvaImage (replaced source)
-//   - otherwise              => the baked composite (preserves all
-//                              native PS effects: gradient, stroke,
-//                              shadow, blend, clipping mask, SO, etc.)
-function LayerNode({ layer, isSelected, onSelect, transformerRef, onChange }) {
-  const baked = useImage(layer.bakedDataUrl)
+// ---------------------------------------------------------------------------
+// LayerNode – decides how a single PSD layer is rendered.
+//
+//   - text + isEdited:   Konva.Text with effects re-applied
+//   - image + isEdited:  Konva.Image with the replacement source
+//   - otherwise:         baked composite from PS  (preserves stroke, shadow,
+//                        gradient, blend mode, clipping mask, smart object,
+//                        warp text, transform — pixel-perfect)
+// ---------------------------------------------------------------------------
+function LayerNode({ layer, isSelected, onSelect, transformerRef, onChange, allowDrag }) {
+  const baked    = useImage(layer.bakedDataUrl)
   const replaced = useImage(layer.dataUrl !== layer.originalDataUrl ? layer.dataUrl : null)
-  const nodeRef = useRef(null)
+  const nodeRef  = useRef(null)
 
   useEffect(() => {
-    if (!transformerRef?.current) return
-    if (isSelected && nodeRef.current) {
-      transformerRef.current.nodes([nodeRef.current])
-      transformerRef.current.getLayer()?.batchDraw()
-    } else if (transformerRef.current.nodes().includes(nodeRef.current)) {
-      transformerRef.current.nodes([])
-      transformerRef.current.getLayer()?.batchDraw()
+    if (!transformerRef?.current || !nodeRef.current) return
+    const tr = transformerRef.current
+    if (isSelected) {
+      tr.nodes([nodeRef.current])
+      tr.getLayer()?.batchDraw()
+    } else if (tr.nodes().includes(nodeRef.current)) {
+      tr.nodes(tr.nodes().filter(n => n !== nodeRef.current))
+      tr.getLayer()?.batchDraw()
     }
-  }, [isSelected, transformerRef])
+  }, [isSelected, transformerRef, layer.id])
 
   const opacity = layer.opacity ?? 1
-  const blendMode = layer.blendMode && layer.blendMode !== 'normal'
+  const blendMode = layer.blendMode && layer.blendMode !== 'source-over'
     ? layer.blendMode
     : 'source-over'
 
-  const common = {
+  const baseProps = {
     ref: nodeRef,
     x: layer.left,
     y: layer.top,
@@ -49,58 +59,77 @@ function LayerNode({ layer, isSelected, onSelect, transformerRef, onChange }) {
     globalCompositeOperation: blendMode,
     onClick: () => onSelect(layer.id),
     onTap: () => onSelect(layer.id),
-    draggable: true,
+    draggable: allowDrag,
     onDragEnd: e => onChange?.(layer.id, { left: e.target.x(), top: e.target.y() }),
     onTransformEnd: e => {
       const node = e.target
       onChange?.(layer.id, {
         left: node.x(),
         top: node.y(),
-        width: Math.max(5, node.width() * node.scaleX()),
+        width:  Math.max(5, node.width()  * node.scaleX()),
         height: Math.max(5, node.height() * node.scaleY()),
+        rotation: node.rotation(),
       })
       node.scaleX(1); node.scaleY(1)
     },
+    rotation: layer.rotation || 0,
   }
 
-  // ── TEXT ──
+  // ── TEXT branch ────────────────────────────────────────────────────────────
   if (layer.type === 'text') {
     if (layer.isEdited) {
       const fontStyle = [layer.bold ? 'bold' : '', layer.italic ? 'italic' : '']
         .filter(Boolean).join(' ') || 'normal'
-      // Synthesize stroke / shadow from parsed effects metadata so the
-      // updated text still feels Photoshop-y.
+
+      // Re-apply parsed PSD effects so changing the text doesn't lose them.
       const eff = layer.effects || {}
       const shadow = eff.dropShadow ? {
-        shadowColor: 'rgba(0,0,0,0.6)',
-        shadowBlur: 6,
-        shadowOffsetX: 2,
-        shadowOffsetY: 2,
+        shadowColor:   eff.dropShadow.color,
+        shadowBlur:    eff.dropShadow.blur,
+        shadowOffsetX: eff.dropShadow.offsetX,
+        shadowOffsetY: eff.dropShadow.offsetY,
+        shadowOpacity: eff.dropShadow.opacity,
       } : {}
       const stroke = eff.stroke ? {
-        stroke: '#000',
-        strokeWidth: 1.5,
+        stroke: eff.stroke.color,
+        strokeWidth: eff.stroke.size,
         fillAfterStrokeEnabled: true,
       } : {}
+
+      // Gradient fill via fillLinearGradientColorStops if PS effect provided one.
+      let gradientProps = {}
+      if (eff.gradient && eff.gradient.colors?.length >= 2) {
+        const stops = []
+        eff.gradient.colors.forEach((c, i) => {
+          stops.push(i / (eff.gradient.colors.length - 1), c)
+        })
+        gradientProps = {
+          fillLinearGradientStartPoint: { x: 0, y: 0 },
+          fillLinearGradientEndPoint: { x: 0, y: layer.height || 64 },
+          fillLinearGradientColorStops: stops,
+        }
+      }
+
       return (
         <KonvaText
-          {...common}
+          {...baseProps}
           text={layer.textContent || ''}
           fontFamily={layer.fontFamily || 'Inter'}
-          fontSize={layer.fontSize || 16}
-          fill={layer.color || '#ffffff'}
+          fontSize={layer.fontSize || 24}
+          fill={layer.color || '#fff'}
           fontStyle={fontStyle}
           width={layer.width}
+          align={layer.alignment || 'left'}
           {...stroke}
           {...shadow}
+          {...gradientProps}
         />
       )
     }
-    // Unedited text: render the baked image so original effects are pixel-perfect
     if (!baked) return null
     return (
       <KonvaImage
-        {...common}
+        {...baseProps}
         image={baked}
         width={layer.width}
         height={layer.height}
@@ -108,15 +137,12 @@ function LayerNode({ layer, isSelected, onSelect, transformerRef, onChange }) {
     )
   }
 
-  // ── IMAGE ──
-  // For unedited images and replaced images we render KonvaImage.
-  // The replaced source may already have been alpha-masked upstream
-  // (clipping / smart-object preservation) — we just draw it.
+  // ── IMAGE branch ───────────────────────────────────────────────────────────
   const img = replaced || baked
   if (!img) return null
   return (
     <KonvaImage
-      {...common}
+      {...baseProps}
       image={img}
       width={layer.width}
       height={layer.height}
@@ -124,66 +150,140 @@ function LayerNode({ layer, isSelected, onSelect, transformerRef, onChange }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// PsdCanvas – Konva Stage with smooth zoom-to-cursor + pan.
+// ---------------------------------------------------------------------------
 const PsdCanvas = forwardRef(function PsdCanvas(
   {
     psdMeta,
     layers,
     selectedLayerId,
     zoom,
+    pan,
     onSelectLayer,
     onLayerChange,
+    onZoomChange,
+    onPanChange,
     showWatermark = true,
   },
   stageRef,
 ) {
   const transformerRef = useRef(null)
-  const watermarkRef = useRef(null)
+  const watermarkRef   = useRef(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const lastPanPos = useRef(null)
 
-  const stageWidth = psdMeta ? psdMeta.width * zoom : 0
+  const stageWidth  = psdMeta ? psdMeta.width  * zoom : 0
   const stageHeight = psdMeta ? psdMeta.height * zoom : 0
 
-  const watermarkFontSize = useMemo(() => (
-    psdMeta ? Math.max(20, Math.min(psdMeta.width, psdMeta.height) * 0.08) : 60
-  ), [psdMeta])
+  // Filter to render-visible layers: a layer is visible iff its own visibility
+  // and its ancestor chain are all on. (Photoshop hides children when the
+  // parent group is hidden.)
+  const visibleLayers = useMemo(
+    () => layers.filter(l => l.visible && l.inheritedVisible !== false),
+    [layers],
+  )
 
-  // Expose hide/show watermark imperatively for export
+  // Apply clipping masks: in PSD a layer with clipping=1 is clipped to the
+  // alpha of the FIRST non-clipping layer beneath it (the "base" layer).
+  // We render each clipping group inside a Konva.Group whose clipFunc is
+  // driven by the base layer's bounding box. That preserves the silhouette
+  // visually for live-edited content as well.
+  const groupedRender = useMemo(() => buildClippingGroups(visibleLayers), [visibleLayers])
+
+  // Expose watermark ref to parent for export hide/show.
   useEffect(() => {
     if (!stageRef?.current) return
     stageRef.current._novaWatermarkRef = watermarkRef
   }, [stageRef])
 
+  // ── Zoom-to-cursor with Ctrl/Cmd + wheel ────────────────────────────────────
+  const handleWheel = (e) => {
+    if (!(e.evt.ctrlKey || e.evt.metaKey)) return
+    e.evt.preventDefault()
+    const stage = e.target.getStage()
+    const oldScale = zoom
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+    const mousePointTo = {
+      x: (pointer.x - (pan?.x || 0)) / oldScale,
+      y: (pointer.y - (pan?.y || 0)) / oldScale,
+    }
+    const direction = e.evt.deltaY > 0 ? -1 : 1
+    const factor = 1.08
+    const newScale = Math.max(0.05, Math.min(8, direction > 0 ? oldScale * factor : oldScale / factor))
+    onZoomChange?.(newScale)
+    onPanChange?.({
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    })
+  }
+
+  // ── Spacebar / middle-button pan ────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code === 'Space' && !e.repeat) setIsPanning(true)
+    }
+    const onKeyUp = (e) => { if (e.code === 'Space') setIsPanning(false) }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
   if (!psdMeta) return null
 
   return (
-    <div style={{ width: stageWidth, height: stageHeight, flexShrink: 0 }}>
+    <div
+      style={{
+        width: stageWidth + Math.abs(pan?.x || 0) + 40,
+        height: stageHeight + Math.abs(pan?.y || 0) + 40,
+        flexShrink: 0,
+        cursor: isPanning ? 'grab' : 'default',
+      }}
+    >
       <Stage
         ref={stageRef}
         width={stageWidth}
         height={stageHeight}
         scaleX={zoom}
         scaleY={zoom}
+        x={pan?.x || 0}
+        y={pan?.y || 0}
+        onWheel={handleWheel}
         onMouseDown={e => {
-          // click on empty area deselects
+          if (isPanning || e.evt.button === 1) {
+            lastPanPos.current = { x: e.evt.clientX, y: e.evt.clientY }
+            return
+          }
           if (e.target === e.target.getStage()) onSelectLayer(null)
         }}
+        onMouseMove={e => {
+          if (!lastPanPos.current) return
+          const dx = e.evt.clientX - lastPanPos.current.x
+          const dy = e.evt.clientY - lastPanPos.current.y
+          lastPanPos.current = { x: e.evt.clientX, y: e.evt.clientY }
+          onPanChange?.({ x: (pan?.x || 0) + dx, y: (pan?.y || 0) + dy })
+        }}
+        onMouseUp={() => { lastPanPos.current = null }}
       >
         <Layer>
-          {/* Transparent backdrop for hit-testing */}
+          {/* Document bounds + transparent backdrop */}
           <Rect x={0} y={0} width={psdMeta.width} height={psdMeta.height}
             fill="rgba(0,0,0,0)" listening={false} />
 
-          {layers
-            .filter(l => l.visible)
-            .map(layer => (
-              <LayerNode
-                key={layer.id}
-                layer={layer}
-                isSelected={layer.id === selectedLayerId}
-                onSelect={onSelectLayer}
-                onChange={onLayerChange}
-                transformerRef={transformerRef}
-              />
-            ))}
+          {groupedRender.map(group => (
+            <ClippedGroup
+              key={group.key}
+              group={group}
+              selectedLayerId={selectedLayerId}
+              onSelectLayer={onSelectLayer}
+              onLayerChange={onLayerChange}
+              transformerRef={transformerRef}
+            />
+          ))}
 
           {showWatermark && (
             <KonvaText
@@ -193,11 +293,11 @@ const PsdCanvas = forwardRef(function PsdCanvas(
               y={psdMeta.height / 2}
               rotation={-35}
               opacity={0.22}
-              fill="rgba(255,255,255,0.5)"
-              fontSize={watermarkFontSize}
+              fill="rgba(255,255,255,0.55)"
+              fontSize={Math.max(20, Math.min(psdMeta.width, psdMeta.height) * 0.08)}
               fontStyle="bold"
-              offsetX={watermarkFontSize * 4}
-              offsetY={watermarkFontSize / 2}
+              offsetX={Math.max(20, Math.min(psdMeta.width, psdMeta.height) * 0.08) * 4}
+              offsetY={Math.max(20, Math.min(psdMeta.width, psdMeta.height) * 0.08) / 2}
               listening={false}
             />
           )}
@@ -205,15 +305,68 @@ const PsdCanvas = forwardRef(function PsdCanvas(
           <Transformer
             ref={transformerRef}
             rotateEnabled={true}
-            anchorSize={8}
-            borderStroke="rgba(167,139,250,0.9)"
-            anchorStroke="rgba(167,139,250,0.9)"
+            anchorSize={9}
+            borderStroke="rgba(167,139,250,0.95)"
+            anchorStroke="rgba(167,139,250,0.95)"
             anchorFill="#0c0c14"
+            anchorCornerRadius={2}
           />
         </Layer>
       </Stage>
     </div>
   )
 })
+
+// ---------------------------------------------------------------------------
+// Clipping-mask grouping — Photoshop semantics:
+//   stack of layers L0, L1 (clipping=1), L2 (clipping=1), L3 → L1 and L2
+//   are clipped to L0.
+//
+// We turn each [base, ...clippers] run into one Konva.Group with clipFunc
+// matching the base's bounding box. (More accurate: clip to baked alpha,
+// but that's expensive; bbox is "good enough" for the live edit overlay
+// because the unedited base layer ALREADY has its alpha baked in.)
+// ---------------------------------------------------------------------------
+function buildClippingGroups(layers) {
+  const groups = []
+  let current = null
+  for (const layer of layers) {
+    if (layer.isClippingMask && current) {
+      current.children.push(layer)
+    } else {
+      if (current) groups.push(current)
+      current = { key: layer.id, base: layer, children: [layer] }
+    }
+  }
+  if (current) groups.push(current)
+  return groups
+}
+
+function ClippedGroup({ group, selectedLayerId, onSelectLayer, onLayerChange, transformerRef }) {
+  const { base, children } = group
+  const clipped = children.length > 1
+  const groupProps = clipped
+    ? {
+        clipFunc: ctx => {
+          ctx.rect(base.left, base.top, base.width, base.height)
+        },
+      }
+    : {}
+  return (
+    <Group {...groupProps}>
+      {children.map(layer => (
+        <LayerNode
+          key={layer.id}
+          layer={layer}
+          isSelected={layer.id === selectedLayerId}
+          onSelect={onSelectLayer}
+          onChange={onLayerChange}
+          transformerRef={transformerRef}
+          allowDrag
+        />
+      ))}
+    </Group>
+  )
+}
 
 export default PsdCanvas

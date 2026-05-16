@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Psd from '@webtoon/psd'
 import {
   Upload, Layers, ZoomIn, ZoomOut, Maximize2,
-  Lock, Star, ChevronLeft, X, Loader, PanelLeft, PanelRight,
+  Lock, Star, ChevronLeft, Loader, PanelLeft, PanelRight,
   Download, Store, ImagePlus, FileType, Image as ImageIcon,
+  Undo2, Redo2,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
@@ -20,9 +21,10 @@ import LayerRow from '../components/psd/LayerRow'
 import ResizableSidebar from '../components/psd/ResizableSidebar'
 import PropertiesPanel from '../components/psd/PropertiesPanel'
 import PsdCanvas from '../components/psd/PsdCanvas'
+import useHistory from '../utils/useHistory'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// helpers
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function detectRatio(w, h) {
@@ -34,7 +36,8 @@ function detectRatio(w, h) {
     { ratio: '5/2',  val: 5 / 2 },
     { ratio: '3/1',  val: 3 },
   ]
-  let best = candidates[0]; let bestDiff = Math.abs(r - best.val)
+  let best = candidates[0]
+  let bestDiff = Math.abs(r - best.val)
   for (const c of candidates) {
     const diff = Math.abs(r - c.val)
     if (diff < bestDiff) { bestDiff = diff; best = c }
@@ -49,19 +52,58 @@ function Spinner({ label }) {
         style={{ background: 'rgba(110,75,255,0.15)' }}>
         <Loader size={22} className="text-violet-300 animate-spin" />
       </div>
-      {label && <p className="text-sm text-white/50">{label}</p>}
+      {label && <p className="text-sm text-white/50 max-w-xs text-center">{label}</p>}
     </div>
   )
 }
 
+// Build a flat list for rendering the layer panel by walking the tree.
+// Returns array of items: layer entries (from `flat`) interleaved with group
+// rows. `expanded` controls which groups are open.
+function buildPanelList(tree, flat, expandedById, groupVisibleById) {
+  const byGroupId = new Map()
+  for (const l of flat) {
+    const arr = byGroupId.get(l.groupId) || []
+    arr.push(l)
+    byGroupId.set(l.groupId, arr)
+  }
+  const out = []
+  function walk(node, depth) {
+    if (!node.children) return
+    // Photoshop renders top-to-bottom in the panel = reversed z-order.
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      const child = node.children[i]
+      if (child.isGroup) {
+        out.push({
+          kind: 'group',
+          id: child.id,
+          name: child.name,
+          depth,
+          isGroup: true,
+          visible: groupVisibleById.get(child.id) ?? child.visible ?? true,
+          inheritedVisible: groupVisibleById.get(child.id) === false ? false : true,
+          type: 'group',
+        })
+        if (expandedById[child.id] !== false) walk(child, depth + 1)
+      } else {
+        const layer = flat.find(l => l.id === child.id)
+        if (layer) out.push({ ...layer, kind: 'layer', depth })
+      }
+    }
+  }
+  walk(tree, 0)
+  return out
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Toolbar (Photoshop-ish dark)
+// Toolbar
 // ─────────────────────────────────────────────────────────────────────────────
 
 function Toolbar({
   psdFile, psdMeta, zoom, onZoomIn, onZoomOut, onZoomFit, onZoom100,
   showLeft, showRight, onToggleLeft, onToggleRight,
   userBalance, onExportClick, hasPaid, isAdmin, onPublishClick,
+  onUndo, onRedo, canUndo, canRedo,
 }) {
   return (
     <div
@@ -88,7 +130,7 @@ function Toolbar({
           style={{ background: 'rgba(110,75,255,0.2)' }}>
           <Layers size={12} className="text-violet-300" />
         </div>
-        <span className="text-xs font-medium text-white/70 truncate max-w-[140px]">
+        <span className="text-xs font-medium text-white/70 truncate max-w-[160px]">
           {psdFile ? psdFile.name : 'Chưa có file PSD'}
         </span>
         {psdMeta && (
@@ -100,17 +142,35 @@ function Toolbar({
 
       <div className="flex-1" />
 
+      <div className="flex items-center gap-1 mr-1">
+        <button onClick={onUndo} disabled={!canUndo}
+          className={clsx('p-1.5 rounded-lg transition-colors',
+            canUndo ? 'text-white/60 hover:text-white hover:bg-white/[0.06]' : 'text-white/20 cursor-not-allowed')}
+          title="Hoàn tác (Ctrl+Z)">
+          <Undo2 size={14} />
+        </button>
+        <button onClick={onRedo} disabled={!canRedo}
+          className={clsx('p-1.5 rounded-lg transition-colors',
+            canRedo ? 'text-white/60 hover:text-white hover:bg-white/[0.06]' : 'text-white/20 cursor-not-allowed')}
+          title="Làm lại (Ctrl+Shift+Z)">
+          <Redo2 size={14} />
+        </button>
+      </div>
+
+      <div className="w-px h-4 bg-white/10" />
+
       <div className="flex items-center gap-1">
         <button onClick={onZoomOut} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors">
           <ZoomOut size={14} />
         </button>
-        <button onClick={onZoom100} className="text-xs text-white/50 hover:text-white min-w-[44px] text-center px-1.5 py-1 rounded-md hover:bg-white/[0.05]">
+        <button onClick={onZoom100}
+          className="text-xs text-white/60 hover:text-white min-w-[44px] text-center px-1.5 py-1 rounded-md hover:bg-white/[0.05]">
           {Math.round(zoom * 100)}%
         </button>
         <button onClick={onZoomIn} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors">
           <ZoomIn size={14} />
         </button>
-        <button onClick={onZoomFit} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors" title="Fit canvas">
+        <button onClick={onZoomFit} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors" title="Vừa khung">
           <Maximize2 size={14} />
         </button>
       </div>
@@ -135,8 +195,11 @@ function Toolbar({
         ) : (
           <button onClick={onExportClick}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer"
-            style={{ background: 'rgba(110,75,255,0.15)', border: '1px solid rgba(110,75,255,0.3)', color: 'rgba(196,181,253,1)' }}
-            title="Thanh toán 50 coins để xuất ảnh chất lượng cao không watermark">
+            style={{
+              background: 'rgba(110,75,255,0.15)',
+              border: '1px solid rgba(110,75,255,0.3)',
+              color: 'rgba(196,181,253,1)',
+            }}>
             <Lock size={12} /> Export <span className="text-[10px] opacity-70">50 ⭐</span>
           </button>
         )}
@@ -146,8 +209,11 @@ function Toolbar({
             <button
               onClick={onPublishClick}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-              style={{ background: 'rgba(43,242,192,0.12)', border: '1px solid rgba(43,242,192,0.3)', color: 'rgba(43,242,192,1)' }}
-            >
+              style={{
+                background: 'rgba(43,242,192,0.12)',
+                border: '1px solid rgba(43,242,192,0.3)',
+                color: 'rgba(43,242,192,1)',
+              }}>
               <Store size={12} /> Đăng lên cửa hàng
             </button>
           </>
@@ -158,7 +224,7 @@ function Toolbar({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Publish modal (kept compatible with shop store)
+// Publish Modal (compatible with shop store)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CATEGORIES = [
@@ -185,7 +251,6 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
     textTransform: 'uppercase', letterSpacing: '0.08em',
     display: 'block', marginBottom: 6,
   }
-
   return (
     <Modal open={open} onClose={onClose} title="Đăng sản phẩm lên cửa hàng" size="md">
       <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -200,7 +265,7 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
           <textarea style={{ ...inputStyle, minHeight: 72, resize: 'vertical' }}
             value={form.desc}
             onChange={e => setForm(f => ({ ...f, desc: e.target.value }))}
-            placeholder="Mô tả ngắn về sản phẩm..." />
+            placeholder="Mô tả ngắn..." />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -211,9 +276,9 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Tag ngắn (tối đa 12 ký tự)</label>
+            <label style={labelStyle}>Tag (tối đa 12)</label>
             <input style={inputStyle} value={form.tag} maxLength={12}
-              onChange={e => setForm(f => ({ ...f, tag: e.target.value }))} placeholder="e.g. Gaming" />
+              onChange={e => setForm(f => ({ ...f, tag: e.target.value }))} placeholder="Gaming" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -234,13 +299,13 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label style={labelStyle}>Mã giảm giá (tùy chọn)</label>
+            <label style={labelStyle}>Mã giảm giá</label>
             <input style={inputStyle} value={form.discountCode}
               onChange={e => setForm(f => ({ ...f, discountCode: e.target.value }))}
-              placeholder="e.g. SALE20" />
+              placeholder="SALE20" />
           </div>
           <div>
-            <label style={labelStyle}>% Giảm (0–100)</label>
+            <label style={labelStyle}>% Giảm</label>
             <input style={inputStyle} type="number" min={0} max={100}
               value={form.discountPercent}
               onChange={e => setForm(f => ({ ...f, discountPercent: Number(e.target.value) }))} />
@@ -251,7 +316,7 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
           <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs"
             style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)', color: 'rgba(253,224,71,0.9)' }}>
             <span className="flex-shrink-0 mt-0.5">⚠️</span>
-            <span>Không tìm thấy layer chuẩn. Sản phẩm sẽ đăng không có trường chỉnh sửa. Đặt tên layer đúng quy chuẩn: <code className="bg-black/30 px-1 rounded text-[10px]">text_1, text_title, text_price, avt_png, logo...</code></span>
+            <span>Không có layer chuẩn. Đặt tên: <code className="bg-black/30 px-1 rounded text-[10px]">text_1, text_title, text_price, avt_png, logo...</code></span>
           </div>
         )}
 
@@ -274,7 +339,7 @@ function PublishModal({ open, onClose, form, setForm, onSubmit, editableFieldCou
             )}
             <label className="flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer text-xs"
               style={{ background: 'rgba(110,75,255,0.1)', border: '1px dashed rgba(110,75,255,0.35)', color: 'rgba(167,139,250,0.9)' }}>
-              <ImagePlus size={13} /> Thêm ảnh preview bổ sung
+              <ImagePlus size={13} /> Thêm ảnh preview
               <input type="file" accept="image/*" multiple className="hidden"
                 onChange={e => {
                   const files = Array.from(e.target.files)
@@ -320,7 +385,10 @@ export default function PsdEditorPage() {
   // PSD state
   const [psdFile, setPsdFile] = useState(null)
   const [psdMeta, setPsdMeta] = useState(null)
-  const [layers, setLayers] = useState([])
+  const [tree, setTree] = useState(null)
+  const [layers, setLayers, history] = useHistory([])
+  const [groupVisible, setGroupVisible] = useState({})    // { [groupId]: bool }
+  const [groupExpanded, setGroupExpanded] = useState({})  // { [groupId]: bool } (default open)
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -328,7 +396,12 @@ export default function PsdEditorPage() {
   // Editor state
   const [selectedLayerId, setSelectedLayerId] = useState(null)
   const [zoom, setZoom] = useState(1)
+  const [pan, setPan]   = useState({ x: 0, y: 0 })
   const [fitZoom, setFitZoom] = useState(1)
+
+  // Drag-and-drop reorder state
+  const [draggedLayerId, setDraggedLayerId] = useState(null)
+  const [dragOverLayerId, setDragOverLayerId] = useState(null)
 
   // Publish state
   const [showPublishModal, setShowPublishModal] = useState(false)
@@ -354,31 +427,37 @@ export default function PsdEditorPage() {
   const stageRef = useRef(null)
   const fileInputRef = useRef(null)
 
-  // Compute fit zoom when container or PSD size changes
+  // ── Fit to container after PSD loads ───────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || !psdMeta) return
     const rect = containerRef.current.getBoundingClientRect()
-    const scaleX = (rect.width - 40) / psdMeta.width
-    const scaleY = (rect.height - 40) / psdMeta.height
+    const scaleX = (rect.width  - 80) / psdMeta.width
+    const scaleY = (rect.height - 80) / psdMeta.height
     const newFit = Math.min(scaleX, scaleY, 1)
     setFitZoom(newFit)
     setZoom(newFit)
+    setPan({
+      x: Math.max(0, (rect.width  - psdMeta.width  * newFit) / 2),
+      y: Math.max(0, (rect.height - psdMeta.height * newFit) / 2),
+    })
   }, [psdMeta, showLeft, showRight])
 
-  // ─── PSD parsing ──
+  // ── PSD parsing ────────────────────────────────────────────────────────────
   const parsePsd = useCallback(async (file) => {
     if (!file) return
-    if (file.size > 50 * 1024 * 1024) {
-      toast('File quá lớn. Tối đa 50MB.', 'error', 'Lỗi')
+    if (file.size > 80 * 1024 * 1024) {
+      toast('File quá lớn. Tối đa 80MB.', 'error', 'Lỗi')
       return
     }
     setPsdFile(file)
     setLoading(true)
     setLoadingMsg('Đang đọc file...')
-    setLayers([])
+    setLayers([], { commit: false })
     setPsdMeta(null)
+    setTree(null)
     setSelectedLayerId(null)
     setHasPaid(false)
+    history.reset([])
 
     try {
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -391,8 +470,28 @@ export default function PsdEditorPage() {
       const psd = Psd.parse(arrayBuffer)
       setPsdMeta({ width: psd.width, height: psd.height })
 
-      const flat = await walkPsdLayers(psd, msg => setLoadingMsg(msg))
-      setLayers(flat)
+      // Yield to the browser so the spinner repaints before composite work.
+      await new Promise(r => setTimeout(r, 0))
+
+      const { flat, tree: parsedTree } = await walkPsdLayers(psd, msg => setLoadingMsg(msg))
+      setTree(parsedTree)
+      history.reset(flat)
+
+      // Default group visibility = follow the file. Default expanded = open.
+      const gv = {}, ge = {}
+      function walk(node) {
+        for (const c of node.children || []) {
+          if (c.isGroup) {
+            gv[c.id] = c.visible !== false
+            ge[c.id] = true
+            walk(c)
+          }
+        }
+      }
+      walk(parsedTree)
+      setGroupVisible(gv)
+      setGroupExpanded(ge)
+
       setLoadingMsg('')
       toast(`Đã nạp ${flat.length} layer`, 'success', `${psd.width} × ${psd.height}`)
     } catch (err) {
@@ -403,7 +502,7 @@ export default function PsdEditorPage() {
       setLoading(false)
       setLoadingMsg('')
     }
-  }, [toast])
+  }, [toast, history, setLayers])
 
   const handleFile = useCallback((f) => {
     if (!f) return
@@ -421,31 +520,49 @@ export default function PsdEditorPage() {
     if (f) handleFile(f)
   }, [handleFile])
 
-  // ─── Layer ops ──
+  // ── Layer ops ──────────────────────────────────────────────────────────────
+
   const toggleLayerVisible = useCallback((id) => {
     setLayers(prev => prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l))
+  }, [setLayers])
+
+  const toggleGroupVisible = useCallback((id) => {
+    setGroupVisible(prev => {
+      const next = { ...prev, [id]: !(prev[id] ?? true) }
+      // Cascade down: every layer whose ancestor chain includes `id` flips its
+      // inheritedVisible flag accordingly.
+      setLayers(curr => curr.map(l => {
+        const inChain = ancestorIds(tree, l.groupId).includes(id)
+        if (!inChain) return l
+        return { ...l, inheritedVisible: ancestorChainVisible(tree, l.groupId, next) }
+      }), { commit: false })
+      return next
+    })
+  }, [tree, setLayers])
+
+  const toggleGroupExpand = useCallback((id) => {
+    setGroupExpanded(prev => ({ ...prev, [id]: !(prev[id] ?? true) }))
   }, [])
 
   const selectLayer = useCallback((id) => {
     setSelectedLayerId(prev => prev === id ? null : id)
   }, [])
 
-  // Apply changes to the currently-selected layer (used by props panel).
-  const updateSelectedLayer = useCallback(async (changes) => {
-    const target = layers.find(l => l.id === selectedLayerId)
+  // Apply changes to a specific layer (used by canvas drag/transform AND props panel).
+  const applyLayerChanges = useCallback(async (id, changes) => {
+    const target = layers.find(l => l.id === id)
     if (!target) return
 
-    // Hard guard: if a text edit is attempted on a non-whitelisted layer, ignore.
+    // Hard guard: text edits only on whitelisted names.
     if (target.type === 'text' && !isEditableTextLayer(target.name)) {
-      // Still allow opacity/blendMode pass-through
       const safe = { ...changes }
       delete safe.textContent; delete safe.fontFamily; delete safe.fontSize
-      delete safe.color; delete safe.bold; delete safe.italic
+      delete safe.color; delete safe.bold; delete safe.italic; delete safe.alignment
       setLayers(prev => prev.map(l => l.id === target.id ? { ...l, ...safe } : l))
       return
     }
 
-    // Image swap on clipping mask / smart object → preserve silhouette
+    // Image swap on clipping/SO → preserve silhouette via alpha mask.
     let next = { ...changes }
     if (target.type === 'image' && changes.dataUrl
         && (target.isClippingMask || target.isSmartObject)
@@ -456,54 +573,101 @@ export default function PsdEditorPage() {
         )
         next.dataUrl = masked
       } catch (err) {
-        console.warn('[PSD] mask preservation failed, using raw image', err)
+        console.warn('[PSD] mask preservation failed', err)
       }
     }
 
     setLayers(prev => prev.map(l => l.id === target.id ? { ...l, ...next } : l))
-  }, [selectedLayerId, layers])
+  }, [layers, setLayers])
 
-  // Drag/transform from canvas
-  const handleCanvasLayerChange = useCallback((id, changes) => {
-    setLayers(prev => prev.map(l => l.id === id ? { ...l, ...changes } : l))
-  }, [])
+  const updateSelectedLayer = useCallback(async (changes) => {
+    if (!selectedLayerId) return
+    return applyLayerChanges(selectedLayerId, changes)
+  }, [selectedLayerId, applyLayerChanges])
 
-  const resetLayer = useCallback(() => {
+  const resetSelectedLayer = useCallback(() => {
+    if (!selectedLayerId) return
     setLayers(prev => prev.map(l => {
       if (l.id !== selectedLayerId) return l
-      const reset = {
+      return {
         ...l,
         isEdited: false,
         textContent: l.originalTextContent ?? l.textContent,
         dataUrl: l.originalDataUrl ?? l.dataUrl,
       }
-      return reset
     }))
-  }, [selectedLayerId])
+  }, [selectedLayerId, setLayers])
 
-  // ─── Zoom ──
-  const handleZoomIn = () => setZoom(z => Math.min(z * 1.2, 4))
-  const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.05))
-  const handleZoomFit = () => setZoom(fitZoom)
-  const handleZoom100 = () => setZoom(1)
-
-  // Wheel-zoom (Ctrl/Cmd + wheel)
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const onWheel = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      e.preventDefault()
-      setZoom(z => {
-        const next = e.deltaY < 0 ? z * 1.1 : z / 1.1
-        return Math.max(0.05, Math.min(4, next))
-      })
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
+  // Drag-to-reorder in the layer panel.
+  const handleLayerDragStart = useCallback((e, layer) => {
+    if (layer.isGroup) { e.preventDefault(); return }
+    setDraggedLayerId(layer.id)
+    e.dataTransfer.effectAllowed = 'move'
   }, [])
 
-  // ─── Publish ──
+  const handleLayerDragOver = useCallback((e, layer) => {
+    setDragOverLayerId(layer.id)
+  }, [])
+
+  const handleLayerDrop = useCallback((e, layer) => {
+    e.preventDefault()
+    const sourceId = draggedLayerId
+    setDraggedLayerId(null)
+    setDragOverLayerId(null)
+    if (!sourceId || sourceId === layer.id || layer.isGroup) return
+    setLayers(prev => {
+      const fromIdx = prev.findIndex(l => l.id === sourceId)
+      const toIdx   = prev.findIndex(l => l.id === layer.id)
+      if (fromIdx === -1 || toIdx === -1) return prev
+      const next = prev.slice()
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      return next
+    })
+  }, [draggedLayerId, setLayers])
+
+  // ── Zoom controls ──────────────────────────────────────────────────────────
+  const handleZoomIn  = () => setZoom(z => Math.min(z * 1.2, 8))
+  const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.05))
+  const handleZoomFit = () => {
+    setZoom(fitZoom)
+    if (containerRef.current && psdMeta) {
+      const rect = containerRef.current.getBoundingClientRect()
+      setPan({
+        x: Math.max(0, (rect.width  - psdMeta.width  * fitZoom) / 2),
+        y: Math.max(0, (rect.height - psdMeta.height * fitZoom) / 2),
+      })
+    }
+  }
+  const handleZoom100 = () => setZoom(1)
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      // ignore typing inside form fields
+      const tag = e.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) history.redo(); else history.undo()
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault(); history.redo()
+      } else if (e.key === '+' || e.key === '=') {
+        handleZoomIn()
+      } else if (e.key === '-' || e.key === '_') {
+        handleZoomOut()
+      } else if (e.key === '0') {
+        handleZoomFit()
+      } else if (e.key === '1') {
+        handleZoom100()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, fitZoom, psdMeta])
+
+  // ── Publish ────────────────────────────────────────────────────────────────
   const handlePublish = () => {
     if (!stageRef.current || !psdMeta) return
     const previewDataUrl = stageRef.current.toDataURL({ pixelRatio: 1 })
@@ -513,9 +677,7 @@ export default function PsdEditorPage() {
         const role = detectLayerRole(l.name)
         if (!role) return null
         return {
-          role: role.role,
-          label: role.label,
-          type: role.type,
+          role: role.role, label: role.label, type: role.type,
           shape: role.shape || 'rect',
           defaultValue: l.type === 'text' ? (l.textContent || '') : null,
           x: l.left, y: l.top, width: l.width, height: l.height,
@@ -530,7 +692,7 @@ export default function PsdEditorPage() {
     const totalImgSize = [previewDataUrl, ...(publishForm.extraImages || [])]
       .reduce((acc, img) => acc + (img?.length || 0) * 0.75, 0)
     if (totalImgSize > 2 * 1024 * 1024) {
-      toast('Tổng dung lượng ảnh quá lớn (>2MB).', 'error', 'Quá dung lượng')
+      toast('Tổng ảnh quá lớn (>2MB).', 'error', 'Quá dung lượng')
       return
     }
     addProduct({
@@ -543,7 +705,7 @@ export default function PsdEditorPage() {
       editableFields,
       images: [previewDataUrl, ...(publishForm.extraImages || [])],
     })
-    toast('Đã đăng sản phẩm lên cửa hàng!', 'success', 'Publish')
+    toast('Đã đăng lên cửa hàng!', 'success', 'Publish')
     setShowPublishModal(false)
     setPublishForm({
       title: '', desc: '', category: 'thumbnail', tag: '',
@@ -551,29 +713,26 @@ export default function PsdEditorPage() {
     })
   }
 
-  // ─── Payment ──
+  // ── Payment ───────────────────────────────────────────────────────────────
   const handlePayment = () => {
     if (!user) {
-      toast('Vui lòng đăng nhập để thanh toán', 'error', 'Chưa đăng nhập')
+      toast('Vui lòng đăng nhập', 'error', 'Chưa đăng nhập')
       return
     }
     if (user.email === 'finnlive246@gmail.com') {
-      setHasPaid(true); setShowPaymentModal(false)
+      setHasPaid(true); setShowPaymentModal(false); setShowExportModal(true)
       toast('Admin: xuất ảnh miễn phí!', 'success', 'Admin')
-      setShowExportModal(true)
       return
     }
     const success = deductBalance(50)
     if (!success) {
-      toast('Số dư không đủ! Hãy nạp thêm coins.', 'error', 'Thanh toán thất bại')
-      return
+      toast('Số dư không đủ!', 'error', 'Thanh toán thất bại'); return
     }
-    setHasPaid(true); setShowPaymentModal(false)
+    setHasPaid(true); setShowPaymentModal(false); setShowExportModal(true)
     toast('Thanh toán thành công!', 'success', 'Đã thanh toán')
-    setShowExportModal(true)
   }
 
-  // ─── Export ──
+  // ── Export ────────────────────────────────────────────────────────────────
   const handleExport = async () => {
     if (!stageRef.current || !psdMeta) return
     const watermarkRef = stageRef.current._novaWatermarkRef
@@ -596,18 +755,22 @@ export default function PsdEditorPage() {
     } catch (err) {
       console.error(err)
       if (watermarkRef?.current) { watermarkRef.current.show(); stageRef.current?.batchDraw() }
-      toast('Lỗi khi xuất ảnh.', 'error', 'Export lỗi')
+      toast('Lỗi khi xuất ảnh', 'error', 'Export lỗi')
     }
   }
 
-  // ─── Derived ──
+  // ── Derived data ──────────────────────────────────────────────────────────
   const selectedLayer = layers.find(l => l.id === selectedLayerId) || null
   const editableFieldCount = useMemo(
     () => layers.filter(l => !!detectLayerRole(l.name)).length,
     [layers],
   )
+  const panelList = useMemo(
+    () => tree ? buildPanelList(tree, layers, groupExpanded, new Map(Object.entries(groupVisible))) : [],
+    [tree, layers, groupExpanded, groupVisible],
+  )
 
-  // ─── Admin gate ──
+  // ── Admin gate ────────────────────────────────────────────────────────────
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-6 text-center px-4">
@@ -626,7 +789,7 @@ export default function PsdEditorPage() {
     )
   }
 
-  // ─── Render ──
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 4rem)', background: '#0a0a10' }}>
       <Toolbar
@@ -646,13 +809,17 @@ export default function PsdEditorPage() {
         hasPaid={hasPaid}
         isAdmin={isAdmin}
         onPublishClick={() => setShowPublishModal(true)}
+        onUndo={history.undo}
+        onRedo={history.redo}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
       />
 
       {hasPaid && psdMeta && (
         <div className="flex items-center gap-2 px-3 py-1.5 text-xs"
           style={{ background: 'rgba(43,242,192,0.08)', borderBottom: '1px solid rgba(43,242,192,0.15)' }}>
           <Download size={12} className="text-teal-400" />
-          <span className="text-teal-300">Phiên export đang mở — đừng rời trang.</span>
+          <span className="text-teal-300">Phiên export đang mở.</span>
           <button onClick={() => setShowExportModal(true)} className="ml-auto text-teal-400 underline font-medium">
             Export ngay
           </button>
@@ -673,9 +840,9 @@ export default function PsdEditorPage() {
             >
               <ResizableSidebar
                 side="left"
-                initial={280}
-                min={220}
-                max={420}
+                initial={300}
+                min={240}
+                max={460}
                 storageKey="nova_psd_left_w"
                 style={{
                   background: 'linear-gradient(180deg, #14141d 0%, #10101a 100%)',
@@ -685,21 +852,28 @@ export default function PsdEditorPage() {
                 <div className="flex flex-col h-full">
                   <div className="px-3 py-3 flex items-center justify-between"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">Layers</span>
-                    <span className="text-[10px] text-white/25">{layers.length}</span>
+                    <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Layers</span>
+                    <span className="text-[10px] text-white/30">{layers.length}</span>
                   </div>
                   <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
                     {layers.length === 0 && (
                       <p className="text-[11px] text-white/30 px-3 py-6 text-center">Chưa có layer.</p>
                     )}
-                    {[...layers].reverse().map(layer => (
+                    {panelList.map(item => (
                       <LayerRow
-                        key={layer.id}
-                        layer={layer}
-                        selected={layer.id === selectedLayerId}
-                        onSelect={selectLayer}
-                        onToggleVisible={toggleLayerVisible}
-                        depth={layer.groupPath?.length || 0}
+                        key={item.id}
+                        layer={item}
+                        depth={item.depth || 0}
+                        selected={!item.isGroup && item.id === selectedLayerId}
+                        expanded={item.isGroup ? (groupExpanded[item.id] ?? true) : undefined}
+                        onSelect={item.isGroup ? undefined : selectLayer}
+                        onToggleVisible={item.isGroup ? toggleGroupVisible : toggleLayerVisible}
+                        onToggleExpand={item.isGroup ? toggleGroupExpand : undefined}
+                        onDragStart={handleLayerDragStart}
+                        onDragOver={handleLayerDragOver}
+                        onDrop={handleLayerDrop}
+                        isDragOver={dragOverLayerId === item.id}
+                        isBeingDragged={draggedLayerId === item.id}
                       />
                     ))}
                   </div>
@@ -712,19 +886,14 @@ export default function PsdEditorPage() {
         {/* CENTER: canvas */}
         <div
           ref={containerRef}
-          className="flex-1 min-w-0 flex items-center justify-center overflow-auto"
+          className="flex-1 min-w-0 flex items-center justify-center overflow-auto relative"
           style={{
             background:
-              'repeating-conic-gradient(rgba(255,255,255,0.02) 0% 25%, transparent 0% 50%) 50% / 24px 24px, #0a0a10',
+              'repeating-conic-gradient(rgba(255,255,255,0.025) 0% 25%, transparent 0% 50%) 50% / 24px 24px, #0a0a10',
           }}
           onClick={(e) => { if (e.target === e.currentTarget) setSelectedLayerId(null) }}
         >
-          {loading && (
-            <div className="flex flex-col items-center gap-3">
-              <Spinner />
-              <p className="text-xs text-white/40">{loadingMsg}</p>
-            </div>
-          )}
+          {loading && <Spinner label={loadingMsg} />}
 
           {!loading && !psdMeta && (
             <motion.div
@@ -756,7 +925,7 @@ export default function PsdEditorPage() {
                   {dragging ? 'Thả file PSD vào đây!' : 'Kéo thả file PSD'}
                 </p>
                 <p className="text-sm text-white/40 mb-4">hoặc click để chọn</p>
-                <p className="text-xs text-white/25">Chỉ .psd – tối đa 50MB</p>
+                <p className="text-xs text-white/25">Chỉ .psd – tối đa 80MB</p>
               </div>
               <input ref={fileInputRef} type="file" accept=".psd" className="hidden"
                 onChange={e => handleFile(e.target.files[0])} />
@@ -770,8 +939,11 @@ export default function PsdEditorPage() {
               layers={layers}
               selectedLayerId={selectedLayerId}
               zoom={zoom}
+              pan={pan}
               onSelectLayer={selectLayer}
-              onLayerChange={handleCanvasLayerChange}
+              onLayerChange={applyLayerChanges}
+              onZoomChange={setZoom}
+              onPanChange={setPan}
               showWatermark={!hasPaid}
             />
           )}
@@ -790,9 +962,9 @@ export default function PsdEditorPage() {
             >
               <ResizableSidebar
                 side="right"
-                initial={300}
-                min={240}
-                max={460}
+                initial={320}
+                min={260}
+                max={500}
                 storageKey="nova_psd_right_w"
                 style={{
                   background: 'linear-gradient(180deg, #14141d 0%, #10101a 100%)',
@@ -802,16 +974,16 @@ export default function PsdEditorPage() {
                 <div className="flex flex-col h-full">
                   <div className="px-3 py-3 flex items-center justify-between"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">Properties</span>
+                    <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Properties</span>
                     {selectedLayer && (
-                      <span className="text-[10px] text-white/25 capitalize">{selectedLayer.type}</span>
+                      <span className="text-[10px] text-white/30 capitalize">{selectedLayer.type}</span>
                     )}
                   </div>
                   <div className="flex-1 overflow-y-auto p-3">
                     <PropertiesPanel
                       layer={selectedLayer}
                       onChange={updateSelectedLayer}
-                      onReset={resetLayer}
+                      onReset={resetSelectedLayer}
                     />
                   </div>
                 </div>
@@ -832,9 +1004,7 @@ export default function PsdEditorPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-white mb-1">Export không watermark</p>
-              <p className="text-xs text-white/50 leading-relaxed">
-                Tải xuống PNG / JPG / WebP chất lượng cao, không watermark.
-              </p>
+              <p className="text-xs text-white/50 leading-relaxed">PNG / JPG / WebP HD, không watermark.</p>
             </div>
           </div>
 
@@ -848,13 +1018,11 @@ export default function PsdEditorPage() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xs text-white/40 mb-1">Số dư của bạn</p>
+              <p className="text-xs text-white/40 mb-1">Số dư</p>
               <div className="flex items-center gap-1 justify-end">
                 <Star size={13} className="text-yellow-400" />
-                <span className={clsx(
-                  'text-base font-bold font-display',
-                  (user?.balance ?? 0) >= 50 ? 'text-emerald-400' : 'text-rose-400',
-                )}>
+                <span className={clsx('text-base font-bold font-display',
+                  (user?.balance ?? 0) >= 50 ? 'text-emerald-400' : 'text-rose-400')}>
                   {user?.balance ?? 0} coins
                 </span>
               </div>
@@ -943,7 +1111,9 @@ export default function PsdEditorPage() {
           <div>
             <div className="flex justify-between mb-2">
               <label className="text-xs text-white/40 uppercase tracking-wider">Độ phân giải</label>
-              <span className="text-xs font-semibold text-white">{exportScale}× ({psdMeta ? psdMeta.width * exportScale : 0}×{psdMeta ? psdMeta.height * exportScale : 0})</span>
+              <span className="text-xs font-semibold text-white">
+                {exportScale}× ({psdMeta ? psdMeta.width * exportScale : 0}×{psdMeta ? psdMeta.height * exportScale : 0})
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[1, 2, 3].map(s => (
@@ -978,4 +1148,32 @@ export default function PsdEditorPage() {
       </Modal>
     </div>
   )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tree helpers (group cascade)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ancestorIds(tree, fromId) {
+  if (!tree || !fromId || fromId === 'root') return []
+  const path = []
+  function walk(node) {
+    if (!node.children) return false
+    if (node.id === fromId) return true
+    for (const c of node.children) {
+      if (c.isGroup && walk(c)) {
+        path.push(c.id)
+        return true
+      }
+    }
+    return false
+  }
+  walk(tree)
+  return path
+}
+
+function ancestorChainVisible(tree, fromGroupId, groupVisible) {
+  if (!fromGroupId || fromGroupId === 'root') return true
+  const ids = ancestorIds(tree, fromGroupId).concat(fromGroupId)
+  return ids.every(id => groupVisible[id] !== false)
 }
