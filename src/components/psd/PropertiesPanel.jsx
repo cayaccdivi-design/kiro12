@@ -1,8 +1,9 @@
 import { useRef } from 'react'
 import {
-  Type, Image as ImageIcon, RotateCcw, Lock,
+  Type, Image as ImageIcon, RotateCcw, Lock, Unlock,
   UploadCloud, Sparkles, Scissors, Box,
   Move, AlignLeft, AlignCenter, AlignRight,
+  ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { isEditableTextLayer, editableTextHint } from '../../utils/layerNaming'
@@ -35,6 +36,48 @@ function Field({ label, children, hint }) {
       </label>
       {children}
       {hint && <p className="text-[10px] text-white/30 mt-1 leading-snug">{hint}</p>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Lock banner — shown above text controls when the layer is locked.
+// User can click "Mở khoá" to flip locked = false; controls then become live.
+// ---------------------------------------------------------------------------
+function LockBanner({ layer, onToggleLock }) {
+  if (!layer.locked) return null
+  const recommended = isEditableTextLayer(layer.name)
+  return (
+    <div
+      className="flex items-start gap-2 p-3 rounded-xl text-xs"
+      style={{
+        background: 'rgba(251,191,36,0.08)',
+        border: '1px solid rgba(251,191,36,0.3)',
+        color: 'rgba(254,215,170,0.95)',
+      }}
+    >
+      <Lock size={14} className="flex-shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold mb-1">Layer này đang bị khoá</p>
+        <p className="text-white/45 mb-2 leading-snug">
+          {recommended
+            ? 'Layer có tên chuẩn nhưng đã bị khoá thủ công.'
+            : <>Tên layer không có trong danh sách mặc định
+                (<code className="px-1 py-0.5 rounded bg-black/40 text-amber-200">{editableTextHint()}</code>).
+                Bạn vẫn có thể mở khoá để sửa.</>}
+        </p>
+        <button
+          onClick={() => onToggleLock?.(layer.id)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors"
+          style={{
+            background: 'rgba(43,242,192,0.15)',
+            border: '1px solid rgba(43,242,192,0.4)',
+            color: 'rgba(110,231,183,1)',
+          }}
+        >
+          <Unlock size={11} /> Mở khoá để sửa
+        </button>
+      </div>
     </div>
   )
 }
@@ -97,47 +140,46 @@ function FontUploader() {
 }
 
 // ---------------------------------------------------------------------------
-// TextControls
+// TextControls — always visible. Disabled while `layer.locked` is true.
 // ---------------------------------------------------------------------------
-function TextControls({ layer, onChange, onReset }) {
+function TextControls({ layer, onChange, onReset, onToggleLock }) {
   const fonts    = useFontStore(s => s.list())
-  const editable = isEditableTextLayer(layer.name)
+  const disabled = layer.locked
 
-  if (!editable) {
-    return (
-      <div
-        className="flex items-start gap-2 p-3 rounded-xl text-xs"
-        style={{
-          background: 'rgba(251,191,36,0.08)',
-          border: '1px solid rgba(251,191,36,0.25)',
-          color: 'rgba(254,215,170,0.9)',
-        }}
-      >
-        <Lock size={14} className="flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="font-semibold mb-1">Text layer này không cho phép sửa.</p>
-          <p className="text-white/40">
-            Đặt tên layer thành <code className="px-1 py-0.5 rounded bg-black/40 text-amber-200">{editableTextHint()}</code> để mở khoá.
-          </p>
-        </div>
-      </div>
-    )
+  // wraps onChange so locked layers can't be mutated by mistake
+  const safeChange = (changes) => {
+    if (disabled) return
+    onChange({ ...changes, isEdited: true })
+  }
+  const inputBase = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    color: 'white',
+    opacity: disabled ? 0.5 : 1,
   }
 
   return (
     <div className="space-y-3">
-      <Field label="Nội dung (realtime)" hint="Mọi thay đổi giữ nguyên stroke / shadow / gradient / blend / clipping mask.">
+      <LockBanner layer={layer} onToggleLock={onToggleLock} />
+
+      <Field
+        label="Nội dung text (realtime)"
+        hint={disabled
+          ? 'Mở khoá ở banner phía trên để sửa text.'
+          : 'Đổi chữ giữ nguyên stroke, shadow, gradient, blend, opacity và clipping mask.'}
+      >
         <textarea
           value={layer.textContent || ''}
-          onChange={e => onChange({ textContent: e.target.value, isEdited: true })}
+          disabled={disabled}
+          onChange={e => safeChange({ textContent: e.target.value })}
           rows={3}
+          placeholder='Nhập text mới (vd: "BIG SALE" thay "SALE OFF")'
           className="w-full text-sm px-3 py-2 rounded-lg outline-none resize-none"
           style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: 'white',
-            minHeight: 72,
+            ...inputBase,
+            minHeight: 78,
             fontFamily: layer.fontFamily || 'Inter',
+            cursor: disabled ? 'not-allowed' : 'text',
           }}
         />
       </Field>
@@ -146,13 +188,10 @@ function TextControls({ layer, onChange, onReset }) {
         <Field label="Font">
           <select
             value={layer.fontFamily || 'Inter'}
-            onChange={e => onChange({ fontFamily: e.target.value, isEdited: true })}
+            disabled={disabled}
+            onChange={e => safeChange({ fontFamily: e.target.value })}
             className="w-full text-xs py-1.5 px-2 rounded-lg outline-none"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'white',
-            }}
+            style={inputBase}
           >
             {fonts.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
@@ -162,47 +201,48 @@ function TextControls({ layer, onChange, onReset }) {
             type="number"
             min={6}
             max={500}
+            disabled={disabled}
             value={layer.fontSize || 16}
-            onChange={e => onChange({ fontSize: Number(e.target.value), isEdited: true })}
+            onChange={e => safeChange({ fontSize: Number(e.target.value) })}
             className="w-full text-xs py-1.5 px-2 rounded-lg outline-none"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'white',
-            }}
+            style={inputBase}
           />
         </Field>
       </div>
 
       <FontUploader />
 
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-2 flex-wrap">
         <Field label="Color">
           <input
             type="color"
-            value={layer.color || '#ffffff'}
-            onChange={e => onChange({ color: e.target.value, isEdited: true })}
+            disabled={disabled}
+            value={cssColorToHex(layer.color || '#ffffff')}
+            onChange={e => safeChange({ color: e.target.value })}
             className="w-12 h-9 rounded-lg cursor-pointer"
             style={{
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.08)',
+              opacity: disabled ? 0.5 : 1,
             }}
           />
         </Field>
         <div className="flex gap-1.5">
           <button
-            onClick={() => onChange({ bold: !layer.bold, isEdited: true })}
+            onClick={() => safeChange({ bold: !layer.bold })}
+            disabled={disabled}
             className={clsx(
-              'w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all',
+              'w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all disabled:opacity-50',
               layer.bold
                 ? 'bg-violet-500/30 text-violet-200 ring-1 ring-violet-500/40'
                 : 'bg-white/[0.04] text-white/60 hover:text-white',
             )}
           >B</button>
           <button
-            onClick={() => onChange({ italic: !layer.italic, isEdited: true })}
+            onClick={() => safeChange({ italic: !layer.italic })}
+            disabled={disabled}
             className={clsx(
-              'w-9 h-9 rounded-lg flex items-center justify-center text-sm italic transition-all',
+              'w-9 h-9 rounded-lg flex items-center justify-center text-sm italic transition-all disabled:opacity-50',
               layer.italic
                 ? 'bg-violet-500/30 text-violet-200 ring-1 ring-violet-500/40'
                 : 'bg-white/[0.04] text-white/60 hover:text-white',
@@ -218,9 +258,10 @@ function TextControls({ layer, onChange, onReset }) {
             ].map(({ id, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => onChange({ alignment: id, isEdited: true })}
+                onClick={() => safeChange({ alignment: id })}
+                disabled={disabled}
                 className={clsx(
-                  'w-8 h-8 rounded-lg flex items-center justify-center transition-all',
+                  'w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-50',
                   layer.alignment === id
                     ? 'bg-violet-500/30 text-violet-200 ring-1 ring-violet-500/40'
                     : 'bg-white/[0.04] text-white/60 hover:text-white',
@@ -233,7 +274,6 @@ function TextControls({ layer, onChange, onReset }) {
         </Field>
       </div>
 
-      {/* Effect status indicator */}
       <EffectsBadge layer={layer} />
 
       <button
@@ -248,6 +288,22 @@ function TextControls({ layer, onChange, onReset }) {
       </button>
     </div>
   )
+}
+
+// PSD parsed text colour can be either #rgb / #rrggbb / rgb(...).
+// <input type="color"> only accepts #rrggbb, so map common cases here.
+function cssColorToHex(c) {
+  if (!c) return '#ffffff'
+  if (c.startsWith('#')) {
+    if (c.length === 4) return '#' + [c[1], c[2], c[3]].map(x => x + x).join('')
+    return c
+  }
+  const m = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(c)
+  if (m) {
+    const hex = (n) => Number(n).toString(16).padStart(2, '0')
+    return '#' + hex(m[1]) + hex(m[2]) + hex(m[3])
+  }
+  return '#ffffff'
 }
 
 function EffectsBadge({ layer }) {
@@ -342,9 +398,37 @@ function ImageControls({ layer, onChange, onReset }) {
 }
 
 // ---------------------------------------------------------------------------
-// CommonControls – position, size, opacity, blend mode.
+// OrderControls — Photoshop-style "bring to front / forward / back" buttons.
 // ---------------------------------------------------------------------------
-function CommonControls({ layer, onChange }) {
+function OrderControls({ onMove }) {
+  if (!onMove) return null
+  return (
+    <Field label="Thứ tự layer">
+      <div className="grid grid-cols-4 gap-1">
+        {[
+          { id: 'top',    icon: ArrowUpToLine,  title: 'Đưa lên trên cùng (Ctrl+Shift+])' },
+          { id: 'up',     icon: ArrowUp,        title: 'Đưa lên trên (Ctrl+])'           },
+          { id: 'down',   icon: ArrowDown,      title: 'Đưa xuống dưới (Ctrl+[)'         },
+          { id: 'bottom', icon: ArrowDownToLine, title: 'Đưa xuống dưới cùng (Ctrl+Shift+[)' },
+        ].map(({ id, icon: Icon, title }) => (
+          <button
+            key={id}
+            onClick={() => onMove(id)}
+            title={title}
+            className="h-8 rounded-lg flex items-center justify-center transition-all bg-white/[0.04] text-white/65 hover:text-white hover:bg-white/[0.08]"
+          >
+            <Icon size={12} />
+          </button>
+        ))}
+      </div>
+    </Field>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CommonControls — position, size, opacity, blend mode, order.
+// ---------------------------------------------------------------------------
+function CommonControls({ layer, onChange, onMove }) {
   const num = (e, key) => onChange({ [key]: Number(e.target.value), isEdited: true })
   const inputStyle = {
     background: 'rgba(255,255,255,0.04)',
@@ -398,6 +482,8 @@ function CommonControls({ layer, onChange }) {
           </select>
         </Field>
       </div>
+
+      <OrderControls onMove={onMove} />
     </div>
   )
 }
@@ -405,7 +491,7 @@ function CommonControls({ layer, onChange }) {
 // ---------------------------------------------------------------------------
 // PropertiesPanel
 // ---------------------------------------------------------------------------
-export default function PropertiesPanel({ layer, onChange, onReset }) {
+export default function PropertiesPanel({ layer, onChange, onReset, onToggleLock, onMove }) {
   if (!layer) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16 px-4 text-center">
@@ -435,13 +521,33 @@ export default function PropertiesPanel({ layer, onChange, onReset }) {
             {layer.isSmartObject ? ' · smart object' : ''}
           </p>
         </div>
+        {layer.type === 'text' && (
+          <button
+            onClick={() => onToggleLock?.(layer.id)}
+            className={clsx(
+              'flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors',
+              layer.locked
+                ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25',
+            )}
+            title={layer.locked ? 'Mở khoá' : 'Khoá'}
+          >
+            {layer.locked ? <Lock size={11} /> : <Unlock size={11} />}
+            {layer.locked ? 'Đang khoá' : 'Đã mở'}
+          </button>
+        )}
       </div>
 
       {layer.type === 'text'
-        ? <TextControls  layer={layer} onChange={onChange} onReset={onReset} />
+        ? <TextControls
+            layer={layer}
+            onChange={onChange}
+            onReset={onReset}
+            onToggleLock={onToggleLock}
+          />
         : <ImageControls layer={layer} onChange={onChange} onReset={onReset} />}
 
-      <CommonControls layer={layer} onChange={onChange} />
+      <CommonControls layer={layer} onChange={onChange} onMove={onMove} />
     </div>
   )
 }

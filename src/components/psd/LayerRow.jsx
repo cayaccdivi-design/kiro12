@@ -1,10 +1,12 @@
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Eye, EyeOff, Type, Image as ImageIcon, Folder, FolderOpen,
-  Scissors, Box, Lock, ChevronRight, ChevronDown, GripVertical,
+  Scissors, Box, Lock, Unlock, ChevronRight, ChevronDown, GripVertical,
+  ChevronUp,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { detectLayerRole, isEditableTextLayer } from '../../utils/layerNaming'
+import { detectLayerRole } from '../../utils/layerNaming'
 
 // ---------------------------------------------------------------------------
 // Icon picker reflects auto-detected Photoshop semantics.
@@ -30,9 +32,6 @@ function MetaPills({ layer }) {
   if (layer.isSmartObject)  pills.push({ label: 'SO',   color: 'cyan' })
   const role = detectLayerRole(layer.name)
   if (role) pills.push({ label: role.label, color: role.type === 'text' ? 'violet' : 'teal' })
-  if (layer.type === 'text' && !isEditableTextLayer(layer.name)) {
-    pills.push({ label: 'locked', color: 'amber' })
-  }
   if (layer.blendMode && layer.blendMode !== 'source-over') {
     pills.push({ label: layer.blendMode, color: 'slate' })
   }
@@ -63,9 +62,10 @@ function MetaPills({ layer }) {
 }
 
 // ---------------------------------------------------------------------------
-// LayerRow – fully featured Photoshop-style row.
+// LayerRow – Photoshop-style row.
 // Supports: indent for nesting, group expand/collapse, visibility toggle,
-//           thumbnail, drag handle for reorder, lock indicator, role badges.
+//           thumbnail, drag-to-reorder, lock/unlock, double-click rename,
+//           move up / move down, role badges.
 // ---------------------------------------------------------------------------
 export default function LayerRow({
   layer,
@@ -74,8 +74,12 @@ export default function LayerRow({
   onSelect,
   onToggleVisible,
   onToggleExpand,
+  onToggleLock,
+  onRename,
+  onMoveUp,
+  onMoveDown,
   depth = 0,
-  // drag-and-drop wiring (handled by parent panel)
+  // drag-and-drop wiring
   onDragStart,
   onDragOver,
   onDrop,
@@ -84,17 +88,36 @@ export default function LayerRow({
 }) {
   const inheritedHidden = layer.inheritedVisible === false
   const indent = 8 + depth * 12
+  const inputRef = useRef(null)
+
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState(layer.name)
+
+  useEffect(() => { setDraftName(layer.name) }, [layer.name])
+  useEffect(() => { if (editing) setTimeout(() => inputRef.current?.select(), 0) }, [editing])
+
+  const commitRename = () => {
+    setEditing(false)
+    const trimmed = (draftName || '').trim()
+    if (trimmed && trimmed !== layer.name) onRename?.(layer.id, trimmed)
+    else setDraftName(layer.name)
+  }
 
   return (
     <motion.div
       layout
-      onClick={() => onSelect?.(layer.id)}
-      draggable={Boolean(onDragStart)}
+      onClick={() => !editing && onSelect?.(layer.id)}
+      onDoubleClick={e => {
+        e.stopPropagation()
+        if (layer.isGroup || !onRename) return
+        setEditing(true)
+      }}
+      draggable={Boolean(onDragStart) && !editing}
       onDragStart={e => onDragStart?.(e, layer)}
       onDragOver={e => { e.preventDefault(); onDragOver?.(e, layer) }}
       onDrop={e => onDrop?.(e, layer)}
       className={clsx(
-        'group flex items-center gap-1.5 pr-2 py-1.5 rounded-md cursor-pointer text-sm select-none transition-colors',
+        'group flex items-center gap-1.5 pr-1.5 py-1.5 rounded-md cursor-pointer text-sm select-none transition-colors',
         selected
           ? 'bg-violet-500/25 ring-1 ring-violet-500/50 text-white'
           : 'text-white/75 hover:bg-white/[0.05] ring-1 ring-transparent',
@@ -161,17 +184,77 @@ export default function LayerRow({
         />
       )}
 
-      <span className={clsx(
-        'truncate flex-1 text-xs',
-        inheritedHidden && 'opacity-50',
-      )}>
-        {layer.name}
-      </span>
+      {/* Name (rename inline on double-click) */}
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draftName}
+          onChange={e => setDraftName(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+            else if (e.key === 'Escape') { e.preventDefault(); setDraftName(layer.name); setEditing(false) }
+            e.stopPropagation()
+          }}
+          onClick={e => e.stopPropagation()}
+          className="flex-1 min-w-0 text-xs px-1.5 py-0.5 rounded outline-none"
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(167,139,250,0.6)',
+            color: 'white',
+          }}
+        />
+      ) : (
+        <span
+          className={clsx(
+            'truncate flex-1 text-xs',
+            inheritedHidden && 'opacity-50',
+          )}
+          title={layer.isGroup ? layer.name : `${layer.name} (double-click để đổi tên)`}
+        >
+          {layer.name}
+        </span>
+      )}
+
+      {/* Action buttons (visible on hover) */}
+      {!editing && !layer.isGroup && (
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={e => { e.stopPropagation(); onMoveUp?.(layer.id) }}
+            disabled={!onMoveUp}
+            className="text-white/40 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
+            title="Đưa lên trên"
+          >
+            <ChevronUp size={11} />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onMoveDown?.(layer.id) }}
+            disabled={!onMoveDown}
+            className="text-white/40 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
+            title="Đưa xuống dưới"
+          >
+            <ChevronDown size={11} />
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-1 flex-shrink-0">
         <MetaPills layer={layer} />
-        {layer.type === 'text' && !isEditableTextLayer(layer.name) && !layer.isGroup && (
-          <Lock size={10} className="text-amber-300/60" />
+
+        {/* Lock toggle (text layers only) */}
+        {layer.type === 'text' && !layer.isGroup && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleLock?.(layer.id) }}
+            className={clsx(
+              'flex-shrink-0 transition-colors p-0.5 rounded',
+              layer.locked
+                ? 'text-amber-300 hover:text-amber-200'
+                : 'text-emerald-300/80 hover:text-emerald-300',
+            )}
+            title={layer.locked ? 'Mở khoá để sửa text' : 'Đang mở khoá – click để khoá lại'}
+          >
+            {layer.locked ? <Lock size={11} /> : <Unlock size={11} />}
+          </button>
         )}
       </div>
     </motion.div>

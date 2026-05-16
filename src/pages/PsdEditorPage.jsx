@@ -10,7 +10,7 @@ import {
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 
-import { detectLayerRole, isEditableTextLayer } from '../utils/layerNaming'
+import { detectLayerRole } from '../utils/layerNaming'
 import { walkPsdLayers, maskByOriginalAlpha } from '../utils/psdTree'
 import { useAuthStore } from '../store/useAuthStore'
 import { useShopStore } from '../store/useShopStore'
@@ -553,11 +553,12 @@ export default function PsdEditorPage() {
     const target = layers.find(l => l.id === id)
     if (!target) return
 
-    // Hard guard: text edits only on whitelisted names.
-    if (target.type === 'text' && !isEditableTextLayer(target.name)) {
+    // Hard guard: text edits only when the layer is unlocked.
+    if (target.type === 'text' && target.locked) {
       const safe = { ...changes }
       delete safe.textContent; delete safe.fontFamily; delete safe.fontSize
       delete safe.color; delete safe.bold; delete safe.italic; delete safe.alignment
+      // Position / size / opacity / blend / rotation still go through.
       setLayers(prev => prev.map(l => l.id === target.id ? { ...l, ...safe } : l))
       return
     }
@@ -597,6 +598,46 @@ export default function PsdEditorPage() {
       }
     }))
   }, [selectedLayerId, setLayers])
+
+  // Toggle lock on a single layer (text only). Lock prevents text edits;
+  // position / size / opacity / blend stay editable so users can keep
+  // arranging locked layers like Photoshop's lock-image-pixels.
+  const toggleLayerLock = useCallback((id) => {
+    setLayers(prev => prev.map(l =>
+      l.id === id ? { ...l, locked: !l.locked } : l,
+    ))
+  }, [setLayers])
+
+  // Inline rename from the layer panel.
+  const renameLayer = useCallback((id, name) => {
+    setLayers(prev => prev.map(l =>
+      l.id === id ? { ...l, name } : l,
+    ))
+  }, [setLayers])
+
+  // Move helpers — adjust z-order in the flat array. NB: visually the panel
+  // shows layers reversed (top of panel = top of canvas), so "move up in
+  // panel" = move LATER in the flat array.
+  const moveLayer = useCallback((id, where) => {
+    setLayers(prev => {
+      const idx = prev.findIndex(l => l.id === id)
+      if (idx === -1) return prev
+      const next = prev.slice()
+      const [moved] = next.splice(idx, 1)
+      let target = idx
+      if (where === 'top')         target = next.length
+      else if (where === 'bottom') target = 0
+      else if (where === 'up')     target = Math.min(next.length, idx + 1)
+      else if (where === 'down')   target = Math.max(0, idx - 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }, [setLayers])
+
+  const moveSelected = useCallback((where) => {
+    if (!selectedLayerId) return
+    moveLayer(selectedLayerId, where)
+  }, [moveLayer, selectedLayerId])
 
   // Drag-to-reorder in the layer panel.
   const handleLayerDragStart = useCallback((e, layer) => {
@@ -660,6 +701,12 @@ export default function PsdEditorPage() {
         handleZoomFit()
       } else if (e.key === '1') {
         handleZoom100()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === ']') {
+        e.preventDefault()
+        if (selectedLayerId) moveLayer(selectedLayerId, e.shiftKey ? 'top' : 'up')
+      } else if ((e.ctrlKey || e.metaKey) && e.key === '[') {
+        e.preventDefault()
+        if (selectedLayerId) moveLayer(selectedLayerId, e.shiftKey ? 'bottom' : 'down')
       }
     }
     window.addEventListener('keydown', onKey)
@@ -869,6 +916,10 @@ export default function PsdEditorPage() {
                         onSelect={item.isGroup ? undefined : selectLayer}
                         onToggleVisible={item.isGroup ? toggleGroupVisible : toggleLayerVisible}
                         onToggleExpand={item.isGroup ? toggleGroupExpand : undefined}
+                        onToggleLock={item.isGroup ? undefined : toggleLayerLock}
+                        onRename={item.isGroup ? undefined : renameLayer}
+                        onMoveUp={item.isGroup ? undefined : (id => moveLayer(id, 'up'))}
+                        onMoveDown={item.isGroup ? undefined : (id => moveLayer(id, 'down'))}
                         onDragStart={handleLayerDragStart}
                         onDragOver={handleLayerDragOver}
                         onDrop={handleLayerDrop}
@@ -984,6 +1035,8 @@ export default function PsdEditorPage() {
                       layer={selectedLayer}
                       onChange={updateSelectedLayer}
                       onReset={resetSelectedLayer}
+                      onToggleLock={toggleLayerLock}
+                      onMove={moveSelected}
                     />
                   </div>
                 </div>
