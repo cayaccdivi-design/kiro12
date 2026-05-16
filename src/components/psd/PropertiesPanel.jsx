@@ -6,7 +6,10 @@ import {
   ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { isEditableTextLayer, editableTextHint } from '../../utils/layerNaming'
+import {
+  isEditableTextLayer, isEditableImageLayer,
+  editableTextHint,    editableImageHint,
+} from '../../utils/layerNaming'
 import { useFontStore } from '../../utils/fontManager'
 
 const BLEND_MODES = [
@@ -41,12 +44,16 @@ function Field({ label, children, hint }) {
 }
 
 // ---------------------------------------------------------------------------
-// Lock banner — shown above text controls when the layer is locked.
+// Lock banner — shown above text/image controls when the layer is locked.
 // User can click "Mở khoá" to flip locked = false; controls then become live.
 // ---------------------------------------------------------------------------
 function LockBanner({ layer, onToggleLock }) {
   if (!layer.locked) return null
-  const recommended = isEditableTextLayer(layer.name)
+  const isText = layer.type === 'text'
+  const recommended = isText
+    ? isEditableTextLayer(layer.name)
+    : isEditableImageLayer(layer.name)
+  const hint = isText ? editableTextHint() : editableImageHint()
   return (
     <div
       className="flex items-start gap-2 p-3 rounded-xl text-xs"
@@ -63,8 +70,8 @@ function LockBanner({ layer, onToggleLock }) {
           {recommended
             ? 'Layer có tên chuẩn nhưng đã bị khoá thủ công.'
             : <>Tên layer không có trong danh sách mặc định
-                (<code className="px-1 py-0.5 rounded bg-black/40 text-amber-200">{editableTextHint()}</code>).
-                Bạn vẫn có thể mở khoá để sửa.</>}
+                (<code className="px-1 py-0.5 rounded bg-black/40 text-amber-200">{hint}</code>).
+                Layer không có tên hoặc tên khác đều bị khoá để giữ nguyên bố cục PSD. Bạn vẫn có thể mở khoá để sửa.</>}
         </p>
         <button
           onClick={() => onToggleLock?.(layer.id)}
@@ -328,11 +335,13 @@ function EffectsBadge({ layer }) {
 }
 
 // ---------------------------------------------------------------------------
-// ImageControls
+// ImageControls — disabled while locked, banner explains how to unlock.
 // ---------------------------------------------------------------------------
-function ImageControls({ layer, onChange, onReset }) {
+function ImageControls({ layer, onChange, onReset, onToggleLock }) {
   const fileRef = useRef(null)
+  const disabled = layer.locked
   const handleReplace = (e) => {
+    if (disabled) return
     const f = e.target.files[0]
     if (!f) return
     const reader = new FileReader()
@@ -342,6 +351,8 @@ function ImageControls({ layer, onChange, onReset }) {
   }
   return (
     <div className="space-y-3">
+      <LockBanner layer={layer} onToggleLock={onToggleLock} />
+
       {layer.dataUrl && (
         <div
           className="rounded-xl overflow-hidden"
@@ -372,14 +383,15 @@ function ImageControls({ layer, onChange, onReset }) {
 
       <button
         onClick={() => fileRef.current?.click()}
-        className="w-full flex items-center justify-center gap-2 text-xs py-2.5 rounded-lg font-medium transition-colors"
+        disabled={disabled}
+        className="w-full flex items-center justify-center gap-2 text-xs py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
           background: 'rgba(110,75,255,0.12)',
           border: '1px solid rgba(110,75,255,0.3)',
           color: 'rgba(196,181,253,1)',
         }}
       >
-        <ImageIcon size={12} /> Thay ảnh (giữ mask & SO)
+        <ImageIcon size={12} /> Thay ảnh PNG / JPG / WebP (giữ mask & SO)
         <input ref={fileRef} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={handleReplace} />
       </button>
 
@@ -521,7 +533,7 @@ export default function PropertiesPanel({ layer, onChange, onReset, onToggleLock
             {layer.isSmartObject ? ' · smart object' : ''}
           </p>
         </div>
-        {layer.type === 'text' && (
+        {(layer.type === 'text' || layer.type === 'image') && (
           <button
             onClick={() => onToggleLock?.(layer.id)}
             className={clsx(
@@ -545,7 +557,12 @@ export default function PropertiesPanel({ layer, onChange, onReset, onToggleLock
             onReset={onReset}
             onToggleLock={onToggleLock}
           />
-        : <ImageControls layer={layer} onChange={onChange} onReset={onReset} />}
+        : <ImageControls
+            layer={layer}
+            onChange={onChange}
+            onReset={onReset}
+            onToggleLock={onToggleLock}
+          />}
 
       <CommonControls layer={layer} onChange={onChange} onMove={onMove} />
     </div>

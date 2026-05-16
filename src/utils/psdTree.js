@@ -16,7 +16,7 @@
 // -----------------------------------------------------------------------------
 
 import { parseEffectDescriptor } from './psdEffects'
-import { isEditableTextLayer } from './layerNaming'
+import { isEditableLayer } from './layerNaming'
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
@@ -264,10 +264,12 @@ export async function walkPsdLayers(psd, onProgress) {
       opacity,
       effects,
 
-      // Lock state — by default a text layer is unlocked iff its name is in
-      // the editable whitelist. The user can flip `locked` per-layer from
-      // the layer panel ("Mở khoá").
-      locked: isText ? !isEditableTextLayer(node.name || '') : false,
+      // Lock state — by default a layer is unlocked iff its name is in the
+      // editable whitelist (text_1, text_title, image_1, logo_1). Every
+      // other layer (including unnamed ones) starts LOCKED so users can't
+      // accidentally mutate them. They can flip `locked` from the layer
+      // panel ("Mở khoá") if they really want to.
+      locked: !isEditableLayer(node.name || ''),
 
       // Text
       textContent: isText

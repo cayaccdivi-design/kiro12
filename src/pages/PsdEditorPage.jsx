@@ -104,6 +104,7 @@ function Toolbar({
   showLeft, showRight, onToggleLeft, onToggleRight,
   userBalance, onExportClick, hasPaid, isAdmin, onPublishClick,
   onUndo, onRedo, canUndo, canRedo,
+  autosaveTick,
 }) {
   return (
     <div
@@ -136,6 +137,19 @@ function Toolbar({
         {psdMeta && (
           <span className="text-[10px] text-white/30 flex-shrink-0">
             {psdMeta.width} × {psdMeta.height}px
+          </span>
+        )}
+        {psdMeta && autosaveTick && (
+          <span
+            className={clsx(
+              'text-[10px] font-medium flex-shrink-0 px-1.5 py-0.5 rounded-full transition-colors',
+              autosaveTick === 'saving'
+                ? 'text-amber-300/80 bg-amber-500/10'
+                : 'text-emerald-300/80 bg-emerald-500/10',
+            )}
+            title="Tự động lưu vào trình duyệt"
+          >
+            {autosaveTick === 'saving' ? 'Đang lưu…' : 'Đã lưu'}
           </span>
         )}
       </div>
@@ -422,6 +436,12 @@ export default function PsdEditorPage() {
   const [showLeft, setShowLeft] = useState(true)
   const [showRight, setShowRight] = useState(true)
 
+  // Autosave wiring — keyed by file fingerprint so revisiting the same PSD
+  // restores the user's draft without colliding with other files.
+  const [saveKey, setSaveKey] = useState(null)
+  const [savedDraft, setSavedDraft] = useState(null) // pending offer to restore
+  const [autosaveTick, setAutosaveTick] = useState(null) // 'saving' | 'saved' | null
+
   // Refs
   const containerRef = useRef(null)
   const stageRef = useRef(null)
@@ -457,7 +477,13 @@ export default function PsdEditorPage() {
     setTree(null)
     setSelectedLayerId(null)
     setHasPaid(false)
+    setSavedDraft(null)
     history.reset([])
+
+    // Stable key for this exact file (name + size). Good enough for a
+    // single browser; not cryptographic.
+    const key = `nova_psd_draft:${file.name}:${file.size}`
+    setSaveKey(key)
 
     try {
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -491,6 +517,23 @@ export default function PsdEditorPage() {
       walk(parsedTree)
       setGroupVisible(gv)
       setGroupExpanded(ge)
+
+      // Look for a previous draft. We compare layer ids to make sure the
+      // saved snapshot is structurally compatible with the current parse.
+      try {
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const draft = JSON.parse(raw)
+          const sameShape =
+            Array.isArray(draft?.layers) &&
+            draft.layers.length === flat.length &&
+            draft.layers.every((d, i) => d.id === flat[i].id)
+          if (sameShape && (draft.layers.some(l => l.isEdited)
+                            || JSON.stringify(draft.groupVisible) !== JSON.stringify(gv))) {
+            setSavedDraft({ ...draft, parsedFlat: flat })
+          }
+        }
+      } catch { /* corrupted draft – ignore */ }
 
       setLoadingMsg('')
       toast(`Đã nạp ${flat.length} layer`, 'success', `${psd.width} × ${psd.height}`)
@@ -553,12 +596,17 @@ export default function PsdEditorPage() {
     const target = layers.find(l => l.id === id)
     if (!target) return
 
-    // Hard guard: text edits only when the layer is unlocked.
-    if (target.type === 'text' && target.locked) {
+    // Lock guard — for both text AND image layers. Position / size /
+    // rotation / opacity / blend / visibility still flow through (PS-style
+    // "lock pixels" semantics) so drag/transform on canvas keeps working.
+    if (target.locked) {
       const safe = { ...changes }
-      delete safe.textContent; delete safe.fontFamily; delete safe.fontSize
-      delete safe.color; delete safe.bold; delete safe.italic; delete safe.alignment
-      // Position / size / opacity / blend / rotation still go through.
+      if (target.type === 'text') {
+        delete safe.textContent; delete safe.fontFamily; delete safe.fontSize
+        delete safe.color; delete safe.bold; delete safe.italic; delete safe.alignment
+      } else {
+        delete safe.dataUrl
+      }
       setLayers(prev => prev.map(l => l.id === target.id ? { ...l, ...safe } : l))
       return
     }
@@ -666,6 +714,72 @@ export default function PsdEditorPage() {
       return next
     })
   }, [draggedLayerId, setLayers])
+
+  // ── Autosave ──────────────────────────────────────────────────────────────
+  // Debounced snapshot to localStorage. We strip the heavy `bakedDataUrl` /
+  // `originalDataUrl` from the saved blob (those are deterministic from the
+  // source PSD); we only persist the user's diffs (text, replaced dataUrl,
+  // position, locked flag, visibility) so the storage stays small.
+  useEffect(() => {
+    if (!saveKey || layers.length === 0) return
+    setAutosaveTick('saving')
+    const t = setTimeout(() => {
+      try {
+        const slim = layers.map(l => ({
+          id: l.id, name: l.name, type: l.type,
+          visible: l.visible, locked: l.locked, isEdited: l.isEdited,
+          left: l.left, top: l.top, width: l.width, height: l.height,
+          rotation: l.rotation, opacity: l.opacity, blendMode: l.blendMode,
+          textContent: l.textContent, fontFamily: l.fontFamily,
+          fontSize: l.fontSize, color: l.color, alignment: l.alignment,
+          bold: l.bold, italic: l.italic,
+          // For images we only persist the swap if it differs from the
+          // original (saves a LOT of bytes for unedited layers).
+          dataUrl: l.type === 'image' && l.dataUrl !== l.originalDataUrl
+            ? l.dataUrl : undefined,
+        }))
+        localStorage.setItem(saveKey, JSON.stringify({
+          savedAt: Date.now(),
+          groupVisible,
+          layers: slim,
+        }))
+        setAutosaveTick('saved')
+      } catch (err) {
+        // Quota errors are common with very large PSDs; fail silently.
+        console.warn('[autosave] failed', err)
+        setAutosaveTick(null)
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [saveKey, layers, groupVisible])
+
+  // Restore handler — merge the slim diff onto the freshly-parsed full layers
+  // so we don't lose `bakedDataUrl` etc.
+  const restoreDraft = useCallback(() => {
+    if (!savedDraft) return
+    const fresh = savedDraft.parsedFlat
+    const byId = new Map(savedDraft.layers.map(l => [l.id, l]))
+    const merged = fresh.map(l => {
+      const diff = byId.get(l.id)
+      if (!diff) return l
+      // Defensive: never let the diff erase baked composites.
+      const { dataUrl, ...rest } = diff
+      return {
+        ...l,
+        ...rest,
+        dataUrl: dataUrl !== undefined ? dataUrl : l.dataUrl,
+      }
+    })
+    history.reset(merged)
+    if (savedDraft.groupVisible) setGroupVisible(savedDraft.groupVisible)
+    setSavedDraft(null)
+    toast('Đã khôi phục bản nháp', 'success', 'Autosave')
+  }, [savedDraft, history, toast])
+
+  const dismissDraft = useCallback(() => {
+    setSavedDraft(null)
+    if (saveKey) localStorage.removeItem(saveKey)
+  }, [saveKey])
 
   // ── Zoom controls ──────────────────────────────────────────────────────────
   const handleZoomIn  = () => setZoom(z => Math.min(z * 1.2, 8))
@@ -860,7 +974,29 @@ export default function PsdEditorPage() {
         onRedo={history.redo}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
+        autosaveTick={autosaveTick}
       />
+
+      {savedDraft && psdMeta && (
+        <div className="flex items-center gap-3 px-3 py-1.5 text-xs"
+          style={{ background: 'rgba(110,75,255,0.08)', borderBottom: '1px solid rgba(110,75,255,0.18)' }}>
+          <span className="text-violet-200">
+            Tìm thấy bản nháp đã lưu cho file này
+            {savedDraft.savedAt
+              ? ` (${new Date(savedDraft.savedAt).toLocaleString('vi-VN')})`
+              : ''}.
+          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <button onClick={restoreDraft}
+              className="text-violet-300 underline font-medium hover:text-violet-200">
+              Khôi phục
+            </button>
+            <button onClick={dismissDraft} className="text-white/40 hover:text-white/70">
+              Bỏ qua
+            </button>
+          </div>
+        </div>
+      )}
 
       {hasPaid && psdMeta && (
         <div className="flex items-center gap-2 px-3 py-1.5 text-xs"

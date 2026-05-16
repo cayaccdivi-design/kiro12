@@ -241,8 +241,8 @@ export default function LayerRow({
       <div className="flex items-center gap-1 flex-shrink-0">
         <MetaPills layer={layer} />
 
-        {/* Lock toggle (text layers only) */}
-        {layer.type === 'text' && !layer.isGroup && (
+        {/* Lock toggle (text + image layers) */}
+        {!layer.isGroup && (layer.type === 'text' || layer.type === 'image') && (
           <button
             onClick={e => { e.stopPropagation(); onToggleLock?.(layer.id) }}
             className={clsx(
@@ -251,7 +251,7 @@ export default function LayerRow({
                 ? 'text-amber-300 hover:text-amber-200'
                 : 'text-emerald-300/80 hover:text-emerald-300',
             )}
-            title={layer.locked ? 'Mở khoá để sửa text' : 'Đang mở khoá – click để khoá lại'}
+            title={layer.locked ? 'Mở khoá để sửa' : 'Đang mở khoá – click để khoá lại'}
           >
             {layer.locked ? <Lock size={11} /> : <Unlock size={11} />}
           </button>
